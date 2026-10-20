@@ -1,0 +1,63 @@
+
+@import '../../../../vendor/filament/filament/resources/css/theme.css';
+
+/* اكتشاف ملفات الواجهة حتى لا تُحذف أصناف Tailwind عند البناء */
+@source '../../../../app/Filament/**/*';
+@source '../../../../resources/views/filament/**/*';
+
+/* هوية نور القرآن */
+:root {
+    --noor-green: #173B32;
+    --noor-green-light: #246653;
+    --noor-gold: #C7A45B;
+    --noor-radius: 1rem;
+}
+
+/* الخطوط والمسافات */
+.fi-body {
+    font-family: "Tajawal", "Noto Sans Arabic", Tahoma, Arial, sans-serif;
+}
+
+/* لون النصوص العامة */
+.fi-main {
+    line-height: 1.75;
+}
+
+/* القائمة الجانبية */
+.fi-sidebar {
+    border-inline-end: 1px solid
+        light-dark(#E4E9E5, #2C3934);
+}
+
+/* بطاقات الإحصائيات والنماذج */
+.fi-wi-stats-overview-stat,
+.fi-section,
+.fi-ta-outer {
+    border-radius: var(--noor-radius);
+}
+
+/* حقول الإدخال */
+.fi-input-wrp {
+    border-radius: 0.75rem;
+}
+
+/* الأزرار */
+.fi-btn {
+    border-radius: 0.75rem;
+}
+
+/* إبراز اللون الذهبي دون المبالغة */
+.fi-sidebar-item-active .fi-sidebar-item-icon {
+    color: var(--noor-gold);
+}
+
+/* دعم الشاشات الصغيرة */
+@media (max-width: 640px) {
+    .fi-main {
+        padding-inline: 0.75rem;
+    }
+
+    .fi-section {
+        border-radius: 0.75rem;
+    }
+}
