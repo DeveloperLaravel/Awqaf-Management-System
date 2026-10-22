@@ -18,6 +18,8 @@ use App\Policies\StudentPolicy;
 use App\Policies\TeacherPolicy;
 use App\Models\Guardian;
 use App\Policies\GuardianPolicy;
+use App\Models\AttendanceRecord;
+use App\Policies\AttendanceRecordPolicy;
 class AppServiceProvider extends ServiceProvider
 {
     public function register(): void
@@ -31,6 +33,11 @@ class AppServiceProvider extends ServiceProvider
          * المدير العام يتجاوز جميع فحوصات الصلاحيات
          * والأدوار المسجلة عبر Laravel Gate.
          */
+
+
+        Gate::policy(AttendanceRecord::class, AttendanceRecordPolicy::class);
+
+
 Gate::policy(Guardian::class, GuardianPolicy::class);
 
 Gate::policy(Student::class, StudentPolicy::class);

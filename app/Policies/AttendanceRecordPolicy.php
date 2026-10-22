@@ -4,72 +4,91 @@ declare(strict_types=1);
 
 namespace App\Policies;
 
-use Illuminate\Foundation\Auth\User as AuthUser;
 use App\Models\AttendanceRecord;
-use Illuminate\Auth\Access\HandlesAuthorization;
+use App\Models\Circle;
+use App\Models\Teacher;
+use App\Models\User;
+use App\Services\CenterHierarchy;
 
 class AttendanceRecordPolicy
 {
-    use HandlesAuthorization;
-    
-    public function viewAny(AuthUser $authUser): bool
+    public function viewAny(User $user): bool
     {
-        return $authUser->can('ViewAny:AttendanceRecord');
+        return $this->hasPermission($user, 'ViewAny:AttendanceRecord')
+            || $this->hasPermission($user, 'attendance.view');
     }
 
-    public function view(AuthUser $authUser, AttendanceRecord $attendanceRecord): bool
+    public function view(User $user, AttendanceRecord $record): bool
     {
-        return $authUser->can('View:AttendanceRecord');
+        return (
+            $this->hasPermission($user, 'View:AttendanceRecord')
+            || $this->hasPermission($user, 'attendance.view')
+        ) && $this->canAccessRecord($user, $record);
     }
 
-    public function create(AuthUser $authUser): bool
+    public function create(User $user): bool
     {
-        return $authUser->can('Create:AttendanceRecord');
+        return $this->hasPermission($user, 'Create:AttendanceRecord')
+            || $this->hasPermission($user, 'attendance.create');
     }
 
-    public function update(AuthUser $authUser, AttendanceRecord $attendanceRecord): bool
+    public function update(User $user, AttendanceRecord $record): bool
     {
-        return $authUser->can('Update:AttendanceRecord');
+        return (
+            $this->hasPermission($user, 'Update:AttendanceRecord')
+            || $this->hasPermission($user, 'attendance.update')
+        ) && $this->canAccessRecord($user, $record);
     }
 
-    public function delete(AuthUser $authUser, AttendanceRecord $attendanceRecord): bool
+    public function delete(User $user, AttendanceRecord $record): bool
     {
-        return $authUser->can('Delete:AttendanceRecord');
+        return (
+            $this->hasPermission($user, 'Delete:AttendanceRecord')
+            || $this->hasPermission($user, 'attendance.delete')
+        ) && $this->canAccessRecord($user, $record);
     }
 
-    public function deleteAny(AuthUser $authUser): bool
+    public function deleteAny(User $user): bool
     {
-        return $authUser->can('DeleteAny:AttendanceRecord');
+        return $this->hasPermission($user, 'DeleteAny:AttendanceRecord');
     }
 
-    public function restore(AuthUser $authUser, AttendanceRecord $attendanceRecord): bool
+    private function hasPermission(User $user, string $permission): bool
     {
-        return $authUser->can('Restore:AttendanceRecord');
+        // نستخدم can() لتجنب رمي استثناء إذا لم تكن الصلاحية معرفة.
+        return $user->can($permission);
     }
 
-    public function forceDelete(AuthUser $authUser, AttendanceRecord $attendanceRecord): bool
-    {
-        return $authUser->can('ForceDelete:AttendanceRecord');
-    }
+    private function canAccessRecord(
+        User $user,
+        AttendanceRecord $record
+    ): bool {
+        if ($user->hasRole('super_admin')) {
+            return true;
+        }
 
-    public function forceDeleteAny(AuthUser $authUser): bool
-    {
-        return $authUser->can('ForceDeleteAny:AttendanceRecord');
-    }
+        $circle = Circle::query()
+            ->whereKey($record->circle_id)
+            ->where('center_id', $record->center_id)
+            ->first();
 
-    public function restoreAny(AuthUser $authUser): bool
-    {
-        return $authUser->can('RestoreAny:AttendanceRecord');
-    }
+        if (! $circle) {
+            return false;
+        }
 
-    public function replicate(AuthUser $authUser, AttendanceRecord $attendanceRecord): bool
-    {
-        return $authUser->can('Replicate:AttendanceRecord');
-    }
+        // المعلم يصل فقط إلى الحلقات المسندة إليه.
+        $teacher = Teacher::query()
+            ->where('user_id', $user->id)
+            ->first();
 
-    public function reorder(AuthUser $authUser): bool
-    {
-        return $authUser->can('Reorder:AttendanceRecord');
-    }
+        if ($teacher) {
+            return (int) $circle->teacher_id === (int) $teacher->id;
+        }
 
+        // بقية المستخدمين يخضعون لنطاق المراكز.
+        return app(CenterHierarchy::class)->canUserAccess(
+            $user,
+            (int) $record->center_id
+        );
+    }
 }
