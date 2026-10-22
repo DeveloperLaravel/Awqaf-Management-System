@@ -4,6 +4,8 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use App\Models\Center;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 class Teacher extends Model
 {
     protected $fillable = [
@@ -34,4 +36,19 @@ class Teacher extends Model
     {
         return $this->belongsTo(User::class);
     }
+     /**
+     * جميع المراكز المرتبط بها المعلم.
+     */
+    public function centers(): BelongsToMany
+    {
+        return $this->belongsToMany(
+            Center::class,
+            'center_teacher',
+            'teacher_id',
+            'center_id',
+        )
+            ->withPivot('is_active', 'joined_at')
+            ->withTimestamps();
+    }
+    
 }

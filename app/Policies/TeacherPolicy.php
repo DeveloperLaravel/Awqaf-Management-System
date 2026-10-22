@@ -4,72 +4,137 @@ declare(strict_types=1);
 
 namespace App\Policies;
 
-use Illuminate\Foundation\Auth\User as AuthUser;
+use App\Models\Center;
 use App\Models\Teacher;
+use App\Models\User;
 use Illuminate\Auth\Access\HandlesAuthorization;
 
 class TeacherPolicy
 {
     use HandlesAuthorization;
-    
-    public function viewAny(AuthUser $authUser): bool
+
+    /**
+     * هل يملك المستخدم صلاحية محددة؟
+     */
+    private function hasPermission(User $user, string $permission): bool
     {
-        return $authUser->can('ViewAny:Teacher');
+        return $user->hasPermissionTo($permission, 'web');
     }
 
-    public function view(AuthUser $authUser, Teacher $teacher): bool
+    /**
+     * المراكز التي يستطيع المستخدم إدارتها.
+     */
+    private function allowedCenterIds(User $user): array
     {
-        return $authUser->can('View:Teacher');
+        if ($user->hasRole('super_admin')) {
+            return $this->hasPermission($user, 'teachers.manage_all')
+                ? Center::query()->pluck('id')->map(
+                    fn ($id): int => (int) $id
+                )->all()
+                : [];
+        }
+
+        if (! $user->center_id) {
+            return [];
+        }
+
+        $allowed = [(int) $user->center_id];
+        $pending = $allowed;
+
+        // جمع الفروع المتداخلة التابعة للمركز.
+        while ($pending !== []) {
+            $children = Center::query()
+                ->whereIn('parent_center_id', $pending)
+                ->whereNotIn('id', $allowed)
+                ->pluck('id')
+                ->map(fn ($id): int => (int) $id)
+                ->all();
+
+            if ($children === []) {
+                break;
+            }
+
+            $allowed = array_values(array_unique(
+                array_merge($allowed, $children)
+            ));
+
+            $pending = $children;
+        }
+
+        return $allowed;
     }
 
-    public function create(AuthUser $authUser): bool
-    {
-        return $authUser->can('Create:Teacher');
+    /**
+     * التأكد من ارتباط المعلم بمركز داخل النطاق.
+     */
+    private function inAllowedScope(
+        User $user,
+        Teacher $teacher
+    ): bool {
+        $allowedIds = $this->allowedCenterIds($user);
+
+        if ($allowedIds === []) {
+            return false;
+        }
+
+        return $teacher->centers()
+            ->whereIn('centers.id', $allowedIds)
+            ->exists();
     }
 
-    public function update(AuthUser $authUser, Teacher $teacher): bool
+    public function viewAny(User $user): bool
     {
-        return $authUser->can('Update:Teacher');
+        return $this->hasPermission($user, 'teachers.view');
     }
 
-    public function delete(AuthUser $authUser, Teacher $teacher): bool
+    public function view(User $user, Teacher $teacher): bool
     {
-        return $authUser->can('Delete:Teacher');
+        return $this->hasPermission($user, 'teachers.view')
+            && $this->inAllowedScope($user, $teacher);
     }
 
-    public function deleteAny(AuthUser $authUser): bool
+    public function create(User $user): bool
     {
-        return $authUser->can('DeleteAny:Teacher');
+        return $this->hasPermission($user, 'teachers.create')
+            && $this->allowedCenterIds($user) !== [];
     }
 
-    public function restore(AuthUser $authUser, Teacher $teacher): bool
+    public function update(User $user, Teacher $teacher): bool
     {
-        return $authUser->can('Restore:Teacher');
+        return $this->hasPermission($user, 'teachers.update')
+            && $this->inAllowedScope($user, $teacher);
     }
 
-    public function forceDelete(AuthUser $authUser, Teacher $teacher): bool
+    public function delete(User $user, Teacher $teacher): bool
     {
-        return $authUser->can('ForceDelete:Teacher');
+        return $this->hasPermission($user, 'teachers.delete')
+            && $this->inAllowedScope($user, $teacher);
     }
 
-    public function forceDeleteAny(AuthUser $authUser): bool
+    public function deleteAny(User $user): bool
     {
-        return $authUser->can('ForceDeleteAny:Teacher');
+        return $this->hasPermission($user, 'teachers.delete');
     }
 
-    public function restoreAny(AuthUser $authUser): bool
+    public function restore(User $user, Teacher $teacher): bool
     {
-        return $authUser->can('RestoreAny:Teacher');
+        return $this->hasPermission($user, 'teachers.restore')
+            && $this->inAllowedScope($user, $teacher);
     }
 
-    public function replicate(AuthUser $authUser, Teacher $teacher): bool
+    public function restoreAny(User $user): bool
     {
-        return $authUser->can('Replicate:Teacher');
+        return $this->hasPermission($user, 'teachers.restore');
     }
 
-    public function reorder(AuthUser $authUser): bool
+    public function forceDelete(User $user, Teacher $teacher): bool
     {
-        return $authUser->can('Reorder:Teacher');
+        return $this->hasPermission($user, 'teachers.force_delete')
+            && $this->inAllowedScope($user, $teacher);
     }
 
+    public function forceDeleteAny(User $user): bool
+    {
+        return $this->hasPermission($user, 'teachers.force_delete');
+    }
 }

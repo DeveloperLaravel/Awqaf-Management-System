@@ -5,12 +5,19 @@ declare(strict_types=1);
 namespace App\Providers;
 
 use App\Models\Center;
+use App\Models\Circle;
+use App\Models\Student;
 use App\Models\User;
 use App\Policies\UserPolicy;
 use App\Services\CenterHierarchy;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
-
+use App\Models\Teacher;
+use App\Policies\CirclePolicy;
+use App\Policies\StudentPolicy;
+use App\Policies\TeacherPolicy;
+use App\Models\Guardian;
+use App\Policies\GuardianPolicy;
 class AppServiceProvider extends ServiceProvider
 {
     public function register(): void
@@ -24,6 +31,126 @@ class AppServiceProvider extends ServiceProvider
          * المدير العام يتجاوز جميع فحوصات الصلاحيات
          * والأدوار المسجلة عبر Laravel Gate.
          */
+Gate::policy(Guardian::class, GuardianPolicy::class);
+
+Gate::policy(Student::class, StudentPolicy::class);
+
+
+
+
+Gate::policy(Circle::class, CirclePolicy::class);
+Gate::define(
+    'circles.view_own',
+    fn (User $user): bool =>
+        $user->hasPermissionTo('circles.view_own', 'web')
+);
+Gate::define(
+    'circles.view',
+    fn (User $user): bool =>
+        $user->hasPermissionTo('circles.view', 'web')
+);
+Gate::define(
+    'circles.view',
+    fn (User $user): bool =>
+        $user->hasPermissionTo('circles.view', 'web')
+);
+Gate::define(
+    'teachers.view',
+    fn (User $user): bool =>
+        $user->hasPermissionTo('circles.view', 'web')
+);
+
+
+Gate::define(
+    'circles.create',
+    fn (User $user): bool =>
+        $user->hasPermissionTo('circles.create', 'web')
+);
+
+Gate::define(
+    'circles.update',
+    fn (User $user): bool =>
+        $user->hasPermissionTo('circles.update', 'web')
+);
+
+Gate::define(
+    'circles.delete',
+    fn (User $user): bool =>
+        $user->hasPermissionTo('circles.delete', 'web')
+);
+
+
+
+    /*
+         * صلاحيات عرض المراكز.
+         */
+        Gate::define('centers.view', function (User $user): bool {
+            return $user->hasPermissionTo('centers.view', 'web');
+        });
+
+        Gate::define('centers.view_all', function (User $user): bool {
+            return $user->hasPermissionTo('centers.view_all', 'web');
+        });
+
+        /*
+         * صلاحيات الإنشاء.
+         */
+        Gate::define('centers.create', function (User $user): bool {
+            return $user->hasPermissionTo('centers.create', 'web');
+        });
+
+        Gate::define('centers.create_child', function (User $user): bool {
+            return $user->hasPermissionTo('centers.create_child', 'web')
+                && app(CenterHierarchy::class)
+                    ->directlyManagedCenters($user)
+                    ->exists();
+        });
+
+
+
+
+
+
+
+
+
+
+
+
+
+Gate::policy(Teacher::class, TeacherPolicy::class);
+
+Gate::define(
+    'teachers.view',
+    fn (User $user): bool =>
+        $user->hasPermissionTo('teachers.view', 'web')
+);
+
+Gate::define(
+    'teachers.create',
+    fn (User $user): bool =>
+        $user->hasPermissionTo('teachers.create', 'web')
+);
+
+Gate::define(
+    'teachers.update',
+    fn (User $user): bool =>
+        $user->hasPermissionTo('teachers.update', 'web')
+);
+
+Gate::define(
+    'teachers.delete',
+    fn (User $user): bool =>
+        $user->hasPermissionTo('teachers.delete', 'web')
+);
+
+Gate::define(
+    'teachers.manage_all',
+    fn (User $user): bool =>
+        $user->hasRole('super_admin')
+        && $user->hasPermissionTo('teachers.manage_all', 'web')
+);
+
     /*
          * صلاحيات عرض المراكز.
          */

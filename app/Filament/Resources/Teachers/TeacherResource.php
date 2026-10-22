@@ -1,11 +1,15 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Filament\Resources\Teachers;
 
-use App\Filament\Resources\Teachers\Pages\CreateTeacher;
-use App\Filament\Resources\Teachers\Pages\EditTeacher;
-use App\Filament\Resources\Teachers\Pages\ListTeachers;
+use App\Filament\Resources\Teachers\Pages;
+use App\Filament\Resources\Teachers\Schemas\TeacherForm;
+use App\Filament\Resources\Teachers\Tables\TeachersTable;
+use App\Models\Center;
 use App\Models\Teacher;
+use App\Models\User;
 use Filament\Actions\BulkActionGroup;
 use Filament\Actions\DeleteAction;
 use Filament\Actions\DeleteBulkAction;
@@ -16,7 +20,7 @@ use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
-use Filament\Support\Icons\Heroicon;
+use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Table;
 use Illuminate\Database\Eloquent\Builder;
@@ -29,20 +33,108 @@ class TeacherResource extends Resource
     protected static ?string $model = Teacher::class;
 
     protected static string|\BackedEnum|null $navigationIcon =
-        Heroicon::OutlinedAcademicCap;
+        'heroicon-o-academic-cap';
 
-    protected static ?string $navigationLabel = 'المعلمين';
-
+    protected static \UnitEnum|string|null $navigationGroup =
+        'إدارة  الوسط';
+      protected static ?int $navigationSort = 1;
     protected static ?string $modelLabel = 'معلم';
 
-    protected static ?string $pluralModelLabel = 'المعلمين';
+    protected static ?string $pluralModelLabel = 'المعلمون';
 
-    // protected static ?string $navigationGroup = 'إدارة مراكز التحفيظ';
-
-    protected static ?int $navigationSort = 3;
+    protected static ?string $navigationLabel = 'المعلمون';
 
     /**
-     * التحقق من صلاحية عرض قائمة المعلمين.
+     * المراكز التي يسمح للمستخدم بإدارتها.
+     *
+     * super_admin الذي يملك centers.view_all:
+     * جميع المراكز.
+     *
+     * مدير المركز الرئيسي:
+     * مركزه والفروع التابعة له.
+     *
+     * مدير المركز الفرعي:
+     * مركزه فقط.
+     */
+    public static function allowedCenterIds(): array
+    {
+        $user = request()->user();
+
+        if (! $user) {
+            return [];
+        }
+
+     
+        
+if (
+    $user->hasRole('super_admin')
+    && Gate::allows('teachers.manage_all')
+) {
+    return Center::query()
+        ->pluck('id')
+        ->map(fn ($id): int => (int) $id)
+        ->all();
+}
+
+
+
+
+
+        if (! $user->center_id) {
+            return [];
+        }
+
+        $allowedIds = [(int) $user->center_id];
+        $pendingIds = $allowedIds;
+
+        /*
+         * جلب جميع الفروع التابعة للمركز،
+         * بما فيها الفروع المتداخلة.
+         *
+         * يفترض وجود parent_center_id في جدول centers.
+         */
+        while ($pendingIds !== []) {
+            $children = Center::query()
+                ->whereIn('parent_center_id', $pendingIds)
+                ->whereNotIn('id', $allowedIds)
+                ->pluck('id')
+                ->map(fn ($id): int => (int) $id)
+                ->all();
+
+            if ($children === []) {
+                break;
+            }
+
+            $allowedIds = array_values(
+                array_unique(array_merge($allowedIds, $children))
+            );
+
+            $pendingIds = $children;
+        }
+
+        return $allowedIds;
+    }
+
+    /**
+     * هل يملك المستخدم صلاحية إدارة المعلم
+     * بناءً على المراكز المرتبط بها المعلم؟
+     */
+    protected static function belongsToAllowedCenter(
+        Teacher $record
+    ): bool {
+        $allowedIds = static::allowedCenterIds();
+
+        if ($allowedIds === []) {
+            return false;
+        }
+
+        return $record->centers()
+            ->whereIn('centers.id', $allowedIds)
+            ->exists();
+    }
+
+    /**
+     * عرض قائمة المعلمين.
      */
     public static function canViewAny(): bool
     {
@@ -50,245 +142,118 @@ class TeacherResource extends Resource
     }
 
     /**
-     * التحقق من صلاحية عرض معلم محدد.
+     * عرض سجل معلم معين.
      */
-    public static function canView(Model $record): bool
-    {
-        return Gate::allows('teachers.view')
-            && static::belongsToAllowedCenter($record);
-    }
+    // public static function canView(Model $record): bool
+    // {
+    //     return $record instanceof Teacher
+    //         && Gate::allows('teachers.view')
+    //         && static::belongsToAllowedCenter($record);
+    // }
+public static function canView(Model $record): bool
+{
+    return $record instanceof Teacher
+        && Gate::allows('view', $record);
+}
 
     /**
-     * التحقق من صلاحية إضافة معلم.
+     * إنشاء معلم.
      */
     public static function canCreate(): bool
     {
-        return Gate::allows('teachers.create');
+        return Gate::allows('teachers.create')
+            && static::allowedCenterIds() !== [];
     }
 
     /**
-     * التحقق من صلاحية تعديل معلم.
+     * تعديل معلم.
      */
+    // public static function canEdit(Model $record): bool
+    // {
+    //     return $record instanceof Teacher
+    //         && Gate::allows('teachers.update')
+    //         && static::belongsToAllowedCenter($record);
+    // }
     public static function canEdit(Model $record): bool
-    {
-        return Gate::allows('teachers.update')
-            && static::belongsToAllowedCenter($record);
-    }
+{
+    return $record instanceof Teacher
+        && Gate::allows('update', $record);
+}
 
     /**
-     * التحقق من صلاحية حذف معلم.
+     * حذف معلم.
      */
-    public static function canDelete(Model $record): bool
-    {
-        return Gate::allows('teachers.delete')
-            && static::belongsToAllowedCenter($record);
-    }
-
+  
+public static function canDelete(Model $record): bool
+{
+    return $record instanceof Teacher
+        && Gate::allows('delete', $record);
+}
     /**
-     * تحديد هل المعلم تابع لمركز مسموح للمستخدم بإدارته.
+     * نموذج المعلم.
      */
-    protected static function belongsToAllowedCenter(
-        Model $record
-    ): bool {
-        if (Gate::allows('centers.view_all')) {
-            return true;
-        }
-
-        $centerId = Auth::user()?->center_id;
-
-        return $centerId !== null
-            && (string) $record->center_id === (string) $centerId;
-    }
-
-    /**
-     * نموذج الإضافة والتعديل.
-     */
-    public static function form(Schema $schema): Schema
-    {
-        return $schema->components([
-            TextInput::make('full_name')
-                ->label('اسم المعلم')
-                ->required()
-                ->maxLength(255)
-                ->autocomplete('name'),
-
-            TextInput::make('phone')
-                ->label('رقم الهاتف')
-                ->tel()
-                ->maxLength(30),
-
-            TextInput::make('email')
-                ->label('البريد الإلكتروني')
-                ->email()
-                ->maxLength(255),
-
-            TextInput::make('qualification')
-                ->label('المؤهل العلمي')
-                ->maxLength(255),
-
-            DatePicker::make('hire_date')
-                ->label('تاريخ التعيين')
-                ->native(false)
-                ->displayFormat('Y-m-d'),
-
-            Select::make('center_id')
-                ->label('مركز التحفيظ')
-                ->relationship(
-                    name: 'center',
-                    titleAttribute: 'name',
-                )
-                ->searchable()
-                ->preload()
-                ->required()
-                ->visible(
-                    fn (): bool => Gate::allows('centers.view_all')
-                ),
-
-            Select::make('user_id')
-                ->label('حساب المستخدم المرتبط')
-                ->relationship(
-                    name: 'user',
-                    titleAttribute: 'name',
-                    modifyQueryUsing: function (Builder $query) {
-                        if (! Gate::allows('centers.view_all')) {
-                            $centerId = Auth::user()?->center_id;
-
-                            if ($centerId === null) {
-                                return $query->whereRaw('1 = 0');
-                            }
-
-                            $query->where('center_id', $centerId);
-                        }
-
-                        return $query->orderBy('name');
-                    },
-                )
-                ->searchable()
-                ->preload()
-                ->nullable()
-                ->helperText(
-                    'اختياري: ربط المعلم بحساب دخول إلى النظام.'
-                ),
-
-            Toggle::make('is_active')
-                ->label('حساب المعلم نشط')
-                ->default(true)
-                ->required(),
-        ]);
-    }
+public static function form(Schema $schema): Schema
+{
+    return TeacherForm::configure($schema);
+}
 
     /**
      * جدول المعلمين.
      */
-    public static function table(Table $table): Table
-    {
-        return $table
-            ->columns([
-                TextColumn::make('full_name')
-                    ->label('اسم المعلم')
-                    ->searchable()
-                    ->sortable(),
-
-                TextColumn::make('phone')
-                    ->label('رقم الهاتف')
-                    ->searchable()
-                    ->placeholder('غير محدد'),
-
-                TextColumn::make('email')
-                    ->label('البريد الإلكتروني')
-                    ->searchable()
-                    ->placeholder('غير محدد')
-                    ->toggleable(),
-
-                TextColumn::make('center.name')
-                    ->label('المركز')
-                    ->sortable()
-                    ->placeholder('غير محدد'),
-
-                TextColumn::make('user.name')
-                    ->label('حساب المستخدم')
-                    ->placeholder('غير مرتبط')
-                    ->toggleable(),
-
-                TextColumn::make('qualification')
-                    ->label('المؤهل')
-                    ->placeholder('غير محدد')
-                    ->toggleable(),
-
-                TextColumn::make('hire_date')
-                    ->label('تاريخ التعيين')
-                    ->date('Y-m-d')
-                    ->sortable()
-                    ->placeholder('غير محدد'),
-
-                TextColumn::make('is_active')
-                    ->label('الحالة')
-                    ->badge()
-                    ->formatStateUsing(
-                        fn ($state): string =>
-                            $state ? 'نشط' : 'غير نشط'
-                    )
-                    ->color(
-                        fn ($state): string =>
-                            $state ? 'success' : 'danger'
-                    ),
-            ])
-            ->defaultSort('created_at', 'desc')
-            ->recordActions([
-                EditAction::make()
-                    ->label('تعديل')
-                    ->visible(
-                        fn (Teacher $record): bool =>
-                            static::canEdit($record)
-                    ),
-
-                DeleteAction::make()
-                    ->label('حذف')
-                    ->visible(
-                        fn (Teacher $record): bool =>
-                            static::canDelete($record)
-                    )
-                    ->requiresConfirmation()
-                    ->modalHeading('حذف المعلم')
-                    ->modalDescription(
-                        'هل أنت متأكد من حذف هذا المعلم؟'
-                    ),
-            ])
-            ->toolbarActions([
-                BulkActionGroup::make([
-                    DeleteBulkAction::make()
-                        ->label('حذف المحدد')
-                        ->visible(false),
-                ]),
-            ]);
-    }
+   public static function table(Table $table): Table
+{
+    return TeachersTable::configure($table);
+}
 
     /**
-     * عزل السجلات حسب مركز المستخدم.
+     * نطاق السجلات المعروضة للمستخدم.
      */
-    public static function getEloquentQuery(): Builder
-    {
-        $query = parent::getEloquentQuery();
 
-        if (Gate::allows('centers.view_all')) {
-            return $query;
-        }
+   
+public static function getEloquentQuery(): Builder
+{
+    $query = parent::getEloquentQuery()
+        ->with(['centers', 'user']);
 
-        $centerId = Auth::user()?->center_id;
+    $user = request()->user();
 
-        if ($centerId === null) {
-            return $query->whereRaw('1 = 0');
-        }
-
-        return $query->where('center_id', $centerId);
+    if (! $user) {
+        return $query->whereRaw('1 = 0');
     }
 
+    // السماح بالوصول العام فقط للمخول من super_admin.
+    if (
+        $user->hasRole('super_admin')
+        && $user->can('teachers.manage_all')
+    ) {
+        return $query;
+    }
+
+    $allowedIds = static::allowedCenterIds();
+
+    if ($allowedIds === []) {
+        return $query->whereRaw('1 = 0');
+    }
+
+    return $query->whereHas(
+        'centers',
+        fn (Builder $centerQuery): Builder =>
+            $centerQuery
+                ->whereIn('centers.id', $allowedIds)
+                ->where('center_teacher.is_active', true)
+    );
+}
+
+
+    /**
+     * صفحات المورد.
+     */
     public static function getPages(): array
     {
         return [
-            'index' => ListTeachers::route('/'),
-            'create' => CreateTeacher::route('/create'),
-            'edit' => EditTeacher::route('/{record}/edit'),
+            'index' => Pages\ListTeachers::route('/'),
+            'create' => Pages\CreateTeacher::route('/create'),
+            'edit' => Pages\EditTeacher::route('/{record}/edit'),
         ];
     }
 }

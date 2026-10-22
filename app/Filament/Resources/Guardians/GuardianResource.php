@@ -1,7 +1,10 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Filament\Resources\Guardians;
 
+use App\Filament\Resources\Concerns\BelongsToCenter;
 use App\Filament\Resources\Guardians\Pages\CreateGuardian;
 use App\Filament\Resources\Guardians\Pages\EditGuardian;
 use App\Filament\Resources\Guardians\Pages\ListGuardians;
@@ -9,7 +12,6 @@ use App\Filament\Resources\Guardians\Pages\ViewGuardian;
 use App\Filament\Resources\Guardians\Schemas\GuardianForm;
 use App\Filament\Resources\Guardians\Schemas\GuardianInfolist;
 use App\Filament\Resources\Guardians\Tables\GuardiansTable;
-use App\Filament\Resources\Concerns\BelongsToCenter;
 use App\Models\Guardian;
 use BackedEnum;
 use Filament\Resources\Resource;
@@ -30,44 +32,29 @@ class GuardianResource extends Resource
         Heroicon::OutlinedRectangleStack;
 
     protected static ?string $recordTitleAttribute = 'full_name';
-
-    /**
-     * نموذج إضافة وتعديل ولي الأمر.
-     */
+  protected static \UnitEnum|string|null $navigationGroup =
+        'إدارة  الوسط';
+      protected static ?int $navigationSort = 3;
     public static function form(Schema $schema): Schema
     {
         return GuardianForm::configure($schema);
     }
 
-    /**
-     * تفاصيل ولي الأمر.
-     */
     public static function infolist(Schema $schema): Schema
     {
         return GuardianInfolist::configure($schema);
     }
 
-    /**
-     * جدول أولياء الأمور.
-     */
     public static function table(Table $table): Table
     {
         return GuardiansTable::configure($table);
     }
 
-    /**
-     * العلاقات.
-     */
     public static function getRelations(): array
     {
-        return [
-            //
-        ];
+        return [];
     }
 
-    /**
-     * صفحات المورد.
-     */
     public static function getPages(): array
     {
         return [
@@ -79,55 +66,48 @@ class GuardianResource extends Resource
     }
 
     /**
-     * فلترة أولياء الأمور حسب مركز المستخدم.
+     * عزل السجلات حسب نطاق المراكز المسموح للمستخدم.
      */
     public static function getEloquentQuery(): Builder
     {
-        return self::applyCenterScope(
+        return static::applyCenterScope(
             parent::getEloquentQuery()
         );
     }
 
-    /**
-     * عرض قائمة أولياء الأمور.
-     */
     public static function canViewAny(): bool
     {
         return Gate::allows('guardians.view');
     }
 
-    /**
-     * إضافة ولي أمر.
-     */
     public static function canCreate(): bool
     {
         return Gate::allows('guardians.create');
     }
 
-    /**
-     * عرض ولي أمر محدد.
-     */
     public static function canView(Model $record): bool
     {
-        return Gate::allows('guardians.view')
-            && self::belongsToAllowedCenter($record);
+        return $record instanceof Guardian
+            && Gate::allows('guardians.view')
+            && static::belongsToAllowedCenter($record);
     }
 
-    /**
-     * تعديل ولي أمر.
-     */
     public static function canEdit(Model $record): bool
     {
-        return Gate::allows('guardians.update')
-            && self::belongsToAllowedCenter($record);
+        return $record instanceof Guardian
+            && Gate::allows('guardians.update')
+            && static::belongsToAllowedCenter($record);
     }
 
-    /**
-     * حذف ولي أمر.
-     */
     public static function canDelete(Model $record): bool
     {
-        return Gate::allows('guardians.delete')
-            && self::belongsToAllowedCenter($record);
+        return $record instanceof Guardian
+            && Gate::allows('guardians.delete')
+            && static::belongsToAllowedCenter($record);
+    }
+
+    public static function canDeleteAny(): bool
+    {
+        return Gate::allows('guardians.delete');
     }
 }

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace Database\Seeders;
 
+use App\Models\AttendanceRecord;
 use App\Models\Center;
 use App\Models\Circle;
 use App\Models\Guardian;
@@ -24,45 +25,116 @@ use Spatie\Permission\PermissionRegistrar;
 
 class RolesAndPermissionsSeeder extends Seeder
 {
-    /**
-     * تشغيل التهيئة.
-     */
+    private const GUARD = 'web';
+
+    private const DEMO_PASSWORD = 'Manager123!';
+
+    private const TEACHERS_PER_BRANCH = 7;
+
     public function run(): void
     {
-        $registrar = app(PermissionRegistrar::class);
-        $registrar->forgetCachedPermissions();
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
 
         DB::transaction(function (): void {
             $this->createPermissions();
             $this->createRoles();
-            $this->createSuperAdmin();
 
+            $superAdmin = $this->createSuperAdmin();
             $region = $this->createDemoRegion();
-            $center = $this->createDemoCenter($region);
 
-            $this->createDemoCenterUsers($center);
+            // المركز الرئيسي.
+            $root = $this->createDemoCenter(
+                region: $region,
+                code: 'CTR-DEMO-001',
+                name: 'مركز النور الرئيسي',
+                parent: null,
+                approvedBy: $superAdmin->getKey(),
+            );
+
+            // مدير المركز الرئيسي.
+            $rootManager = $this->createUser(
+                name: 'مدير المركز الرئيسي التجريبي',
+                email: 'demo.root.manager@example.com',
+                password: self::DEMO_PASSWORD,
+                role: 'center_manager',
+                center: $root,
+            );
+
+            $this->attachManager($rootManager, $root);
+
+            // إنشاء المركزين الفرعيين مع بيانات كل مركز.
+            $branches = [
+                [
+                    'code' => 'CTR-DEMO-002',
+                    'name' => 'مركز النور الفرعي الأول',
+                    'manager_name' => 'مدير الفرع الأول',
+                    'manager_email' => 'demo.branch1.manager@example.com',
+                    'phone' => '0910000002',
+                    'prefix' => 'الفرع الأول',
+                ],
+                [
+                    'code' => 'CTR-DEMO-003',
+                    'name' => 'مركز النور الفرعي الثاني',
+                    'manager_name' => 'مدير الفرع الثاني',
+                    'manager_email' => 'demo.branch2.manager@example.com',
+                    'phone' => '0910000003',
+                    'prefix' => 'الفرع الثاني',
+                ],
+            ];
+
+            foreach ($branches as $branch) {
+                $center = $this->createDemoCenter(
+                    region: $region,
+                    code: $branch['code'],
+                    name: $branch['name'],
+                    parent: $root,
+                    approvedBy: $superAdmin->getKey(),
+                    parentApprovedBy: $rootManager->getKey(),
+                    phone: $branch['phone'],
+                );
+
+                $manager = $this->createUser(
+                    name: $branch['manager_name'],
+                    email: $branch['manager_email'],
+                    password: self::DEMO_PASSWORD,
+                    role: 'center_manager',
+                    center: $center,
+                );
+
+                $this->attachManager($manager, $center);
+
+                $this->createBranchData(
+                    center: $center,
+                    prefix: $branch['prefix'],
+                );
+            }
         });
 
-        $registrar->forgetCachedPermissions();
+        app(PermissionRegistrar::class)->forgetCachedPermissions();
 
         $this->command?->info(
-            'تم إنشاء الصلاحيات والأدوار والبيانات التجريبية بنجاح.'
+            'اكتمل إعداد الصلاحيات والمركز الرئيسي والمركزين الفرعيين.'
+        );
+
+        $this->command?->info(
+            'تم إعداد 7 معلمين و7 حلقات و7 أولياء أمور و7 طلاب '
+            . 'و7 سجلات حضور لكل مركز فرعي.'
         );
 
         $this->command?->warn(
-            'كلمات المرور التجريبية مخصصة للتطوير فقط. غيّرها قبل النشر.'
+            'كلمات المرور تجريبية. لا تستخدمها في الإنتاج.'
         );
     }
 
-    /**
-     * إنشاء جميع الصلاحيات.
-     */
+    // ---------------------------------------------------------
+    // 1. الصلاحيات
+    // ---------------------------------------------------------
+
     private function createPermissions(): void
     {
         $permissions = [
             'dashboard.view',
 
-            // المراكز
             'centers.view',
             'centers.view_all',
             'centers.create',
@@ -72,244 +144,186 @@ class RolesAndPermissionsSeeder extends Seeder
             'centers.approve_child',
             'centers.approve_final',
 
-            // المستخدمون
             'users.view',
             'users.create',
             'users.update',
             'users.delete',
 
-            // المناطق
+            'roles.view',
+            'roles.create',
+            'roles.update',
+            'roles.delete',
+
             'regions.view',
             'regions.create',
             'regions.update',
             'regions.delete',
 
-            // المعلمون
             'teachers.view',
             'teachers.create',
             'teachers.update',
             'teachers.delete',
+            'teachers.manage_all',
+            'teachers.restore',
+            'teachers.force_delete',
 
-            // أولياء الأمور
             'guardians.view',
             'guardians.create',
             'guardians.update',
             'guardians.delete',
 
-            // الطلاب
             'students.view',
             'students.create',
             'students.update',
             'students.delete',
 
-            // الحلقات
+            'circles.view_own',
             'circles.view',
             'circles.create',
             'circles.update',
             'circles.delete',
-            
-                'roles.view',
-                'roles.create',
-                'roles.update',
-                'roles.delete',
 
-            // الحضور
             'attendance.view',
             'attendance.create',
             'attendance.update',
             'attendance.delete',
 
-            // الحفظ والتسميع
             'memorization.view',
             'memorization.create',
             'memorization.update',
             'memorization.delete',
 
-            // التقييمات
             'evaluations.view',
             'evaluations.create',
             'evaluations.update',
             'evaluations.delete',
 
-            // المدفوعات
             'payments.view',
             'payments.create',
             'payments.update',
             'payments.delete',
 
-            // التقارير
             'reports.view',
             'financial_reports.view',
 
-            // الإعدادات والملف الشخصي
             'settings.view',
             'settings.update',
+
             'profile.view',
             'profile.update',
 
-            // صلاحيات الطالب وولي الأمر
             'children.view_own',
             'attendance.view_own',
             'memorization.view_own',
             'payments.view_own',
         ];
 
-        foreach (array_unique($permissions) as $permissionName) {
+        foreach (array_unique($permissions) as $name) {
             Permission::query()->firstOrCreate([
-                'name' => $permissionName,
-                'guard_name' => 'web',
+                'name' => $name,
+                'guard_name' => self::GUARD,
             ]);
         }
 
         app(PermissionRegistrar::class)->forgetCachedPermissions();
     }
 
-    /**
-     * إنشاء الأدوار وإسناد الصلاحيات.
-     *
-     * يتم استبدال صلاحيات الدور بالقائمة المحددة عند كل تشغيل.
-     */
+    // ---------------------------------------------------------
+    // 2. الأدوار
+    // ---------------------------------------------------------
+
     private function createRoles(): void
     {
+        $allPermissions = Permission::query()
+            ->where('guard_name', self::GUARD)
+            ->pluck('name')
+            ->all();
+
+        /*
+         * مدير المركز لا يحصل على centers.view_all
+         * ولا teachers.manage_all.
+         *
+         * صلاحيات البيانات وحدها لا تكفي للعزل؛
+         * يجب أن تطبق Resources وPolicies نطاق المركز.
+         */
+        $centerManagement = [
+            'dashboard.view',
+
+
+
+            'centers.view',
+            'circles.view_own',
+
+
+            'centers.create_child',
+            'centers.update',
+            'centers.approve_child',
+
+            'users.view',
+            'users.create',
+            'users.update',
+            'users.delete',
+
+            'roles.view',
+            'regions.view',
+
+            'teachers.view',
+            'teachers.create',
+            'teachers.update',
+            'teachers.delete',
+
+            'guardians.view',
+            'guardians.create',
+            'guardians.update',
+            'guardians.delete',
+
+            'students.view',
+            'students.create',
+            'students.update',
+            'students.delete',
+
+            'circles.view',
+            'circles.create',
+            'circles.update',
+            'circles.delete',
+
+            'attendance.view',
+            'attendance.create',
+            'attendance.update',
+            'attendance.delete',
+
+            'memorization.view',
+            'memorization.create',
+            'memorization.update',
+            'memorization.delete',
+
+            'evaluations.view',
+            'evaluations.create',
+            'evaluations.update',
+            'evaluations.delete',
+
+            'payments.view',
+            'payments.create',
+            'payments.update',
+            'payments.delete',
+
+            'reports.view',
+            'financial_reports.view',
+
+            'profile.view',
+            'profile.update',
+        ];
+
         $rolePermissions = [
-            'super_admin' => Permission::query()
-                ->where('guard_name', 'web')
-                ->pluck('name')
-                ->all(),
+            'super_admin' => $allPermissions,
 
-            'center_manager' => [
-                'dashboard.view',
+            'center_manager' => $centerManagement,
 
-                'centers.view',
-                'centers.create_child',
-                'centers.update',
-                'centers.approve_child',
-
-                'users.view',
-                'users.create',
-                'users.update',
-                'users.delete',
-                
-                'roles.view',
-                'roles.create',
-                'roles.update',
-                'roles.delete',
-
-                'regions.view',
-
-                'teachers.view',
-                'teachers.create',
-                'teachers.update',
-                'teachers.delete',
-
-                'guardians.view',
-                'guardians.create',
-                'guardians.update',
-                'guardians.delete',
-
-                'students.view',
-                'students.create',
-                'students.update',
-                'students.delete',
-
-                'circles.view',
-                'circles.create',
-                'circles.update',
-                'circles.delete',
-
-                
-
-                'attendance.view',
-                'attendance.create',
-                'attendance.update',
-                'attendance.delete',
-
-                'memorization.view',
-                'memorization.create',
-                'memorization.update',
-                'memorization.delete',
-
-                'evaluations.view',
-                'evaluations.create',
-                'evaluations.update',
-                'evaluations.delete',
-
-                'payments.view',
-                'payments.create',
-                'payments.update',
-                'payments.delete',
-
-                'reports.view',
-                'financial_reports.view',
-
-                'profile.view',
-                'profile.update',
-            ],
-
+            // لا نمنح مدير المركز القدرة على إنشاء أدوار
+            // أو تعديل صلاحياتها من دون ضوابط إضافية.
             'center_admin' => [
-                'dashboard.view',
-
-                'centers.view',
-                'centers.create_child',
-                'centers.update',
+                ...$centerManagement,
                 'centers.delete',
-                'centers.approve_child',
-
-                'users.view',
-                'users.create',
-                'users.update',
-                'users.update',
-
-                'regions.view',
-                'regions.create',
-                'regions.update',
-                'regions.delete',
-
-                'teachers.view',
-                'teachers.create',
-                'teachers.update',
-                'teachers.delete',
-
-                'guardians.view',
-                'guardians.create',
-                'guardians.update',
-                'guardians.delete',
-
-                'students.view',
-                'students.create',
-                'students.update',
-                'students.delete',
-
-                'roles.view',
-                'roles.create',
-                'roles.update',
-                'roles.delete',
-
-                'circles.view',
-                'circles.create',
-                'circles.update',
-
-                'attendance.view',
-                'attendance.create',
-                'attendance.update',
-
-                'memorization.view',
-                'memorization.create',
-                'memorization.update',
-
-                'evaluations.view',
-                'evaluations.create',
-                'evaluations.update',
-
-                'payments.view',
-                'payments.create',
-                'payments.update',
-
-                'reports.view',
-                'financial_reports.view',
-
-                'profile.view',
-                'profile.update',
             ],
 
             'supervisor' => [
@@ -317,19 +331,15 @@ class RolesAndPermissionsSeeder extends Seeder
                 'students.view',
                 'teachers.view',
                 'circles.view',
-
                 'attendance.view',
                 'attendance.create',
                 'attendance.update',
-
                 'memorization.view',
                 'memorization.create',
                 'memorization.update',
-
                 'evaluations.view',
                 'evaluations.create',
                 'evaluations.update',
-
                 'reports.view',
                 'profile.view',
                 'profile.update',
@@ -339,37 +349,29 @@ class RolesAndPermissionsSeeder extends Seeder
                 'dashboard.view',
                 'students.view',
                 'circles.view',
-
                 'attendance.view',
                 'attendance.create',
                 'attendance.update',
-
                 'memorization.view',
                 'memorization.create',
                 'memorization.update',
-
                 'evaluations.view',
                 'evaluations.create',
                 'evaluations.update',
-
                 'profile.view',
                 'profile.update',
             ],
 
             'data_entry' => [
                 'dashboard.view',
-
                 'students.view',
                 'students.create',
                 'students.update',
-
                 'guardians.view',
                 'guardians.create',
                 'guardians.update',
-
                 'teachers.view',
                 'circles.view',
-
                 'profile.view',
                 'profile.update',
             ],
@@ -378,11 +380,9 @@ class RolesAndPermissionsSeeder extends Seeder
                 'dashboard.view',
                 'students.view',
                 'circles.view',
-
                 'attendance.view',
                 'attendance.create',
                 'attendance.update',
-
                 'profile.view',
                 'profile.update',
             ],
@@ -391,13 +391,10 @@ class RolesAndPermissionsSeeder extends Seeder
                 'dashboard.view',
                 'students.view',
                 'guardians.view',
-
                 'payments.view',
                 'payments.create',
                 'payments.update',
-
                 'financial_reports.view',
-
                 'profile.view',
                 'profile.update',
             ],
@@ -435,24 +432,26 @@ class RolesAndPermissionsSeeder extends Seeder
         foreach ($rolePermissions as $roleName => $permissionNames) {
             $role = Role::query()->firstOrCreate([
                 'name' => $roleName,
-                'guard_name' => 'web',
+                'guard_name' => self::GUARD,
             ]);
 
             $permissions = Permission::query()
-                ->where('guard_name', 'web')
+                ->where('guard_name', self::GUARD)
                 ->whereIn('name', array_unique($permissionNames))
                 ->get();
 
+            // مزامنة صلاحيات الدور مع القائمة المحددة.
             $role->syncPermissions($permissions);
         }
 
         app(PermissionRegistrar::class)->forgetCachedPermissions();
     }
 
-    /**
-     * إنشاء حساب المدير العام.
-     */
-    private function createSuperAdmin(): void
+    // ---------------------------------------------------------
+    // 3. المدير العام
+    // ---------------------------------------------------------
+
+    private function createSuperAdmin(): User
     {
         $user = User::query()->firstOrCreate(
             ['email' => 'hnarfr20063@gmail.com'],
@@ -464,22 +463,26 @@ class RolesAndPermissionsSeeder extends Seeder
 
         $role = Role::query()->firstOrCreate([
             'name' => 'super_admin',
-            'guard_name' => 'web',
+            'guard_name' => self::GUARD,
         ]);
 
         $user->syncRoles([$role]);
 
         $this->command?->info(
-            'حساب المدير العام: hnarfr20063@gmail.com'
+            'المدير العام: hnarfr20063@gmail.com / 12345678'
         );
+
+        return $user;
     }
 
-    /**
-     * إنشاء المنطقة التجريبية.
-     */
+    // ---------------------------------------------------------
+    // 4. المنطقة التجريبية
+    // ---------------------------------------------------------
+
     private function createDemoRegion(): Region
     {
-        return $this->firstOrCreateModel(
+        /** @var Region $region */
+        $region = $this->saveModel(
             Region::class,
             ['code' => 'TRP-DEMO-01'],
             [
@@ -488,287 +491,243 @@ class RolesAndPermissionsSeeder extends Seeder
                 'is_active' => true,
             ],
         );
+
+        return $region;
     }
 
-    /**
-     * إنشاء المركز الرئيسي التجريبي.
-     */
-    private function createDemoCenter(Region $region): Center
-    {
-        return $this->firstOrCreateModel(
-            Center::class,
-            ['code' => 'CTR-DEMO-001'],
-            [
-                'name' => 'مركز النور لتحفيظ القرآن',
-                'region_id' => $region->getKey(),
-                'phone' => '0910000001',
-                'email' => 'center.demo@example.com',
-                'address' => 'طرابلس - عنوان تجريبي',
-                'is_active' => true,
-                'approval_status' => 'active',
-                'approved_at' => now(),
-                'approved_by' => null,
-                'parent_center_id' => null,
-                'parent_approved_by' => null,
-                'parent_approved_at' => null,
-                'rejection_reason' => null,
-            ],
-        );
-    }
+    // ---------------------------------------------------------
+    // 5. إنشاء المراكز
+    // ---------------------------------------------------------
 
-    /**
-     * إنشاء بيانات مستخدمي المركز.
-     */
-    private function createDemoCenterUsers(Center $center): void
-    {
-        $manager = $this->createUser(
-            name: 'مدير المركز التجريبي',
-            email: 'manager@example.com',
-            password: 'Manager123!',
-            role: 'center_manager',
-            center: $center,
-        );
+    private function createDemoCenter(
+        Region $region,
+        string $code,
+        string $name,
+        ?Center $parent,
+        int|string|null $approvedBy,
+        int|string|null $parentApprovedBy = null,
+        ?string $phone = null,
+    ): Center {
+        $attributes = [
+            'name' => $name,
+            'code' => $code,
+            'region_id' => $region->getKey(),
+            'parent_center_id' => $parent?->getKey(),
+            'phone' => $phone ?? '0910000001',
+            'email' => strtolower($code) . '@example.com',
+            'address' => 'عنوان تجريبي - طرابلس',
+            'is_active' => true,
 
-        /*
-         * لا نفترض أن managedCenters علاقة Many-to-Many.
-         * ننفذ المزامنة فقط عندما تكون العلاقة من هذا النوع.
-         */
-        if (method_exists($manager, 'managedCenters')) {
-            $relation = $manager->managedCenters();
+            // استُخدمت القيمة الموجودة في Seeder الأصلي.
+            'approval_status' => 'active',
 
-            if ($relation instanceof BelongsToMany) {
-                $relation->syncWithoutDetaching([$center->getKey()]);
-            }
-        }
+            'approved_at' => now(),
+            'approved_by' => $approvedBy,
 
-        $this->command?->info(
-            'مدير المركز: manager@example.com / Manager123!'
-        );
+            'parent_approved_by' => $parentApprovedBy,
+            'parent_approved_at' => $parent
+                ? now()
+                : null,
 
-        // المعلمون.
-        $teachersData = [
-            [
-                'name' => 'محمد سالم',
-                'email' => 'teacher1@example.com',
-                'phone' => '0911000001',
-                'qualification' => 'إجازة في القرآن الكريم',
-                'hire_date' => '2025-01-01',
-            ],
-            [
-                'name' => 'أحمد علي',
-                'email' => 'teacher2@example.com',
-                'phone' => '0911000002',
-                'qualification' => 'حافظ للقرآن الكريم',
-                'hire_date' => '2025-02-01',
-            ],
-            [
-                'name' => 'خالد عمر',
-                'email' => 'teacher3@example.com',
-                'phone' => '0911000003',
-                'qualification' => 'معلم قرآن كريم',
-                'hire_date' => '2025-03-01',
-            ],
+            'rejection_reason' => null,
         ];
 
-        $teachers = [];
+        /** @var Center $center */
+        $center = $this->saveModel(
+            Center::class,
+            ['code' => $code],
+            $attributes,
+        );
 
-        foreach ($teachersData as $item) {
+        return $center;
+    }
+
+    // ---------------------------------------------------------
+    // 6. إنشاء بيانات كل مركز فرعي
+    // ---------------------------------------------------------
+
+    private function createBranchData(
+        Center $center,
+        string $prefix,
+    ): void {
+        $teachers = [];
+        $circles = [];
+        $guardians = [];
+
+        $centerCode = strtolower((string) $center->code);
+
+        // إنشاء 7 معلمين وحسابات دخولهم.
+        for ($i = 1; $i <= self::TEACHERS_PER_BRANCH; $i++) {
+            $number = str_pad((string) $i, 3, '0', STR_PAD_LEFT);
+            $name = "معلم {$prefix} {$i}";
+            $email = "demo.{$centerCode}.teacher{$i}@example.com";
+
             $user = $this->createUser(
-                name: $item['name'],
-                email: $item['email'],
+                name: $name,
+                email: $email,
                 password: 'Teacher123!',
                 role: 'teacher',
                 center: $center,
             );
 
-            $teacher = $this->firstOrCreateModel(
+            /** @var Teacher $teacher */
+            $teacher = $this->saveModel(
                 Teacher::class,
                 [
                     'center_id' => $center->getKey(),
-                    'email' => $item['email'],
+                    'email' => $email,
                 ],
                 [
+                    'center_id' => $center->getKey(),
                     'user_id' => $user->getKey(),
-                    'full_name' => $item['name'],
-                    'phone' => $item['phone'],
-                    'qualification' => $item['qualification'],
-                    'hire_date' => $item['hire_date'],
+                    'full_name' => $name,
+                    'phone' => sprintf(
+                        '093%02d%04d',
+                        (int) $center->getKey() % 100,
+                        $i
+                    ),
+                    'email' => $email,
+                    'qualification' => 'حافظ للقرآن الكريم',
+                    'hire_date' => today()->toDateString(),
                     'is_active' => true,
                 ],
             );
 
+            $this->attachTeacherToCenter($teacher, $center);
+
             $teachers[] = $teacher;
 
-            $this->command?->info(
-                'حساب المعلم: ' . $item['email'] . ' / Teacher123!'
-            );
-        }
-
-        // الحلقات.
-        $circleData = [
-            [
-                'name' => 'حلقة الفجر',
-                'level' => 'beginner',
-                'room' => 'قاعة 1',
-                'starts_at' => '08:00:00',
-                'ends_at' => '09:00:00',
-            ],
-            [
-                'name' => 'حلقة الضحى',
-                'level' => 'beginner',
-                'room' => 'قاعة 2',
-                'starts_at' => '10:00:00',
-                'ends_at' => '11:00:00',
-            ],
-            [
-                'name' => 'حلقة العصر',
-                'level' => 'beginner',
-                'room' => 'قاعة 3',
-                'starts_at' => '16:00:00',
-                'ends_at' => '17:00:00',
-            ],
-        ];
-
-        $circles = [];
-
-        foreach ($teachers as $index => $teacher) {
-            $data = $circleData[$index];
-
-            $circles[] = $this->firstOrCreateModel(
+            // حلقة واحدة لكل معلم.
+            /** @var Circle $circle */
+            $circle = $this->saveModel(
                 Circle::class,
                 [
                     'center_id' => $center->getKey(),
-                    'code' => sprintf('CIRCLE-%03d', $index + 1),
+                    'code' => "{$center->code}-CIRCLE-{$number}",
                 ],
                 [
+                    'center_id' => $center->getKey(),
                     'teacher_id' => $teacher->getKey(),
-                    'name' => $data['name'],
-                    'level' => $data['level'],
-                    'room' => $data['room'],
+                    'name' => "حلقة {$prefix} {$i}",
+                    'code' => "{$center->code}-CIRCLE-{$number}",
+                    'level' => match ($i % 3) {
+                        0 => 'advanced',
+                        1 => 'beginner',
+                        default => 'intermediate',
+                    },
+                    'room' => 'قاعة ' . $i,
                     'capacity' => 20,
-                    'starts_at' => $data['starts_at'],
-                    'ends_at' => $data['ends_at'],
+                    'starts_at' => sprintf('%02d:00:00', 7 + $i),
+                    'ends_at' => sprintf('%02d:00:00', 8 + $i),
                     'days' => ['sunday', 'tuesday', 'thursday'],
                     'is_active' => true,
                 ],
             );
+
+            $circles[] = $circle;
         }
 
-        // أولياء الأمور.
-        $guardiansData = [
-            [
-                'name' => 'سالم محمد',
-                'email' => 'guardian1@example.com',
-                'phone' => '0922000001',
-            ],
-            [
-                'name' => 'علي أحمد',
-                'email' => 'guardian2@example.com',
-                'phone' => '0922000002',
-            ],
-            [
-                'name' => 'عمر خالد',
-                'email' => 'guardian3@example.com',
-                'phone' => '0922000003',
-            ],
-            [
-                'name' => 'محمد إبراهيم',
-                'email' => 'guardian4@example.com',
-                'phone' => '0922000004',
-            ],
-        ];
+        // إنشاء 7 أولياء أمور.
+        for ($i = 1; $i <= 7; $i++) {
+            $name = "ولي الأمر {$prefix} {$i}";
+            $email = "demo.{$centerCode}.guardian{$i}@example.com";
+            $phone = sprintf(
+                '094%02d%04d',
+                (int) $center->getKey() % 100,
+                $i
+            );
 
-        $guardians = [];
-
-        foreach ($guardiansData as $item) {
             $user = $this->createUser(
-                name: $item['name'],
-                email: $item['email'],
+                name: $name,
+                email: $email,
                 password: 'Guardian123!',
                 role: 'guardian',
                 center: $center,
             );
 
-            $guardian = $this->firstOrCreateModel(
+            /** @var Guardian $guardian */
+            $guardian = $this->saveModel(
                 Guardian::class,
                 [
                     'center_id' => $center->getKey(),
-                    'phone' => $item['phone'],
+                    'phone' => $phone,
                 ],
                 [
+                    'center_id' => $center->getKey(),
                     'user_id' => $user->getKey(),
-                    'full_name' => $item['name'],
-                    'email' => $item['email'],
-                    'address' => 'طرابلس',
+                    'full_name' => $name,
+                    'phone' => $phone,
+                    'email' => $email,
+                    'address' => 'طرابلس - عنوان تجريبي',
                     'relationship' => 'father',
                     'is_active' => true,
                 ],
             );
 
             $guardians[] = $guardian;
-
-            $this->command?->info(
-                'حساب ولي الأمر: '
-                . $item['email']
-                . ' / Guardian123!'
-            );
         }
 
-        // الطلاب وتوزيعهم على الحلقات.
-        for ($i = 1; $i <= 12; $i++) {
-            $guardianIndex = ($i - 1) % count($guardians);
-            $circleIndex = ($i - 1) % count($circles);
+        // إنشاء 7 طلاب وربط كل طالب بولي أمر وحلقة وحضور اليوم.
+        for ($i = 1; $i <= 7; $i++) {
+            $number = str_pad((string) $i, 4, '0', STR_PAD_LEFT);
 
-            $student = $this->firstOrCreateModel(
+            /** @var Student $student */
+            $student = $this->saveModel(
                 Student::class,
                 [
                     'center_id' => $center->getKey(),
-                    'student_code' => sprintf('STU-%04d', $i),
+                    'student_code' => "{$center->code}-STU-{$number}",
                 ],
                 [
-                    'guardian_id' => $guardians[$guardianIndex]->getKey(),
-                    'full_name' => 'الطالب التجريبي ' . $i,
-                    'birth_date' => now()
+                    'center_id' => $center->getKey(),
+                    'guardian_id' => $guardians[$i - 1]->getKey(),
+                    'student_code' => "{$center->code}-STU-{$number}",
+                    'full_name' => "الطالب {$prefix} {$i}",
+                    'birth_date' => today()
                         ->subYears(8 + ($i % 6))
                         ->toDateString(),
-                    'enrollment_date' => now()
-                        ->subMonths($i)
-                        ->toDateString(),
-                    'gender' => $i % 2 === 0 ? 'female' : 'male',
-                    'school_grade' => 'الصف ' . (1 + ($i % 6)),
-                    'notes' => 'بيانات طالب تجريبية.',
+                    'enrollment_date' => today()->toDateString(),
+                    'gender' => 'male',
+                    'school_grade' => 'المرحلة الابتدائية',
+                    'notes' => 'بيانات تجريبية.',
                     'is_active' => true,
                 ],
             );
 
-            $circle = $circles[$circleIndex];
+            $circle = $circles[$i - 1];
+            $teacher = $teachers[$i - 1];
 
-            /*
-             * الطلاب قد يرتبطون بالحلقة بعلاقة Many-to-Many
-             * أو HasMany حسب تصميم قاعدة البيانات.
-             */
-            if (method_exists($circle, 'students')) {
-                $relation = $circle->students();
+            $this->attachStudentToCircle($circle, $student);
 
-                if ($relation instanceof BelongsToMany) {
-                    $relation->syncWithoutDetaching([
-                        $student->getKey(),
-                    ]);
-                } elseif (
-                    method_exists($relation, 'getRelated')
-                    && $relation->getRelated() instanceof Student
-                ) {
-                    $student->forceFill([
-                        $relation->getForeignKeyName() => $circle->getKey(),
-                    ])->save();
-                }
-            }
+            // سجل حضور واحد لكل طالب بتاريخ اليوم.
+            $this->saveModel(
+                AttendanceRecord::class,
+                [
+                    'student_id' => $student->getKey(),
+                    'circle_id' => $circle->getKey(),
+                    'attendance_date' => today()->toDateString(),
+                ],
+                [
+                    'center_id' => $center->getKey(),
+                    'student_id' => $student->getKey(),
+                    'circle_id' => $circle->getKey(),
+                    'teacher_id' => $teacher->getKey(),
+                    'attendance_date' => today()->toDateString(),
+                    'status' => $this->attendanceStatus($i),
+                    'notes' => 'سجل حضور تجريبي.',
+                ],
+            );
         }
+
+        $this->command?->info(
+            "اكتملت البيانات التجريبية للمركز: {$center->name}"
+        );
     }
 
-    /**
-     * إنشاء المستخدم وربطه بالدور والمركز.
-     */
+    // ---------------------------------------------------------
+    // 7. إنشاء المستخدم وربطه بالدور والمركز
+    // ---------------------------------------------------------
+
     private function createUser(
         string $name,
         string $email,
@@ -776,25 +735,25 @@ class RolesAndPermissionsSeeder extends Seeder
         string $role,
         Center $center,
     ): User {
-        $user = User::query()->firstOrCreate(
-            ['email' => $email],
-            [
-                'name' => $name,
-                'password' => Hash::make($password),
-            ],
-        );
+        $attributes = [
+            'name' => $name,
+            'email' => $email,
+            'password' => Hash::make($password),
+            'center_id' => $center->getKey(),
+            'is_active' => true,
+            'email_verified_at' => now(),
+        ];
 
-        if (Schema::hasColumn($user->getTable(), 'center_id')) {
-            if ($user->center_id === null) {
-                $user->forceFill([
-                    'center_id' => $center->getKey(),
-                ])->save();
-            }
-        }
+        /** @var User $user */
+        $user = $this->saveModel(
+            User::class,
+            ['email' => $email],
+            $attributes,
+        );
 
         $roleModel = Role::query()->firstOrCreate([
             'name' => $role,
-            'guard_name' => 'web',
+            'guard_name' => self::GUARD,
         ]);
 
         $user->syncRoles([$roleModel]);
@@ -802,13 +761,121 @@ class RolesAndPermissionsSeeder extends Seeder
         return $user;
     }
 
-    /**
-     * البحث عن سجل وإنشاؤه إذا لم يكن موجودًا.
-     *
-     * أعمدة الهوية يجب أن تكون موجودة كلها؛
-     * لا نسمح بإسقاطها بصمت حتى لا نطابق سجلًا خاطئًا.
-     */
-    private function firstOrCreateModel(
+    // ---------------------------------------------------------
+    // 8. ربط مدير المركز بالمركز
+    // ---------------------------------------------------------
+
+    private function attachManager(User $user, Center $center): void
+    {
+        if (method_exists($user, 'managedCenters')) {
+            $relation = $user->managedCenters();
+
+            if ($relation instanceof BelongsToMany) {
+                $relation->syncWithoutDetaching([
+                    $center->getKey(),
+                ]);
+
+                return;
+            }
+        }
+
+        // user.center_id هو الربط الأساسي في تصميم المشروع.
+        if (
+            Schema::hasColumn($user->getTable(), 'center_id')
+            && (string) $user->center_id !== (string) $center->getKey()
+        ) {
+            $user->forceFill([
+                'center_id' => $center->getKey(),
+            ])->save();
+        }
+    }
+
+    // ---------------------------------------------------------
+    // 9. ربط المعلم بالمركز عبر center_teacher
+    // ---------------------------------------------------------
+
+    private function attachTeacherToCenter(
+        Teacher $teacher,
+        Center $center,
+    ): void {
+        if (! method_exists($teacher, 'centers')) {
+            return;
+        }
+
+        $relation = $teacher->centers();
+
+        if (! $relation instanceof BelongsToMany) {
+            return;
+        }
+
+        $pivot = [
+            'is_active' => true,
+            'joined_at' => today()->toDateString(),
+        ];
+
+        if (Schema::hasTable('center_teacher')) {
+            $pivot = $this->existingColumns('center_teacher', $pivot);
+        }
+
+        $relation->syncWithoutDetaching([
+            $center->getKey() => $pivot,
+        ]);
+    }
+
+    // ---------------------------------------------------------
+    // 10. ربط الطالب بالحلقة
+    // ---------------------------------------------------------
+
+    private function attachStudentToCircle(
+        Circle $circle,
+        Student $student,
+    ): void {
+        if (method_exists($circle, 'students')) {
+            $relation = $circle->students();
+
+            if ($relation instanceof BelongsToMany) {
+                $relation->syncWithoutDetaching([
+                    $student->getKey(),
+                ]);
+
+                return;
+            }
+        }
+
+        // دعم تصميم آخر إذا كان students يحتوي circle_id.
+        if (Schema::hasColumn('students', 'circle_id')) {
+            $student->forceFill([
+                'circle_id' => $circle->getKey(),
+            ])->save();
+
+            return;
+        }
+
+        throw new RuntimeException(
+            'تعذر ربط الطالب بالحلقة. أضف علاقة students() '
+            . 'في Circle أو تحقق من جدول الربط circle_student.'
+        );
+    }
+
+    // ---------------------------------------------------------
+    // 11. حالات الحضور
+    // ---------------------------------------------------------
+
+    private function attendanceStatus(int $number): string
+    {
+        return match ($number % 4) {
+            0 => 'absent',
+            1 => 'present',
+            2 => 'late',
+            default => 'excused',
+        };
+    }
+
+    // ---------------------------------------------------------
+    // 12. حفظ السجلات بصورة قابلة لإعادة التشغيل
+    // ---------------------------------------------------------
+
+    private function saveModel(
         string $modelClass,
         array $identity,
         array $attributes,
@@ -818,56 +885,67 @@ class RolesAndPermissionsSeeder extends Seeder
 
         $table = $prototype->getTable();
 
-        if ($identity === []) {
+        if (! Schema::hasTable($table)) {
             throw new RuntimeException(
-                "لم يتم تحديد هوية السجل في الجدول {$table}."
+                "الجدول {$table} غير موجود. شغّل migrations أولًا."
             );
         }
 
         foreach (array_keys($identity) as $column) {
             if (! Schema::hasColumn($table, $column)) {
                 throw new RuntimeException(
-                    "العمود {$column} غير موجود في الجدول {$table}. "
-                    . 'راجع Migration الخاص بهذا الجدول.'
+                    "العمود {$table}.{$column} غير موجود. "
+                    . 'راجع ملف Migration.'
                 );
             }
         }
 
+        $identity = $this->existingColumns($table, $identity);
         $attributes = $this->existingColumns($table, $attributes);
 
-        /** @var Model|null $record */
-        $record = $modelClass::query()
-            ->where($identity)
-            ->first();
+        /** @var Model $record */
+        $record = $modelClass::query()->firstOrNew($identity);
 
-        if ($record !== null) {
-            return $record;
+        $values = array_merge($identity, $attributes);
+        $casts = $record->getCasts();
+
+        foreach ($values as $column => $value) {
+            if (
+                is_array($value)
+                && ! array_key_exists($column, $casts)
+            ) {
+                $values[$column] = json_encode(
+                    $value,
+                    JSON_THROW_ON_ERROR | JSON_UNESCAPED_UNICODE,
+                );
+            }
         }
 
-        $record = new $modelClass();
-
-        $record->forceFill(array_merge(
-            $identity,
-            $attributes,
-        ));
-
+        $record->forceFill($values);
         $record->save();
 
         return $record;
     }
 
-    /**
-     * الاحتفاظ بالحقول الموجودة فقط.
-     */
+    // ---------------------------------------------------------
+    // 13. فلترة الأعمدة وفق قاعدة البيانات الفعلية
+    // ---------------------------------------------------------
+
     private function existingColumns(
         string $table,
         array $attributes,
     ): array {
-        return array_filter(
+        if (! Schema::hasTable($table)) {
+            throw new RuntimeException(
+                "الجدول {$table} غير موجود."
+            );
+        }
+
+        $columns = Schema::getColumnListing($table);
+
+        return array_intersect_key(
             $attributes,
-            static fn (string $column): bool =>
-                Schema::hasColumn($table, $column),
-            ARRAY_FILTER_USE_KEY,
+            array_flip($columns),
         );
     }
 }

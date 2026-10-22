@@ -4,6 +4,7 @@ namespace App\Filament\Resources\Students\Schemas;
 
 use App\Models\Center;
 use App\Models\Guardian;
+use App\Support\StudentCenterAccess;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
@@ -15,6 +16,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\Rule;
+use Illuminate\Database\Eloquent\Builder;
 
 class StudentForm
 {
@@ -22,26 +24,63 @@ class StudentForm
     {
         return $schema->components([
 
-            // المركز
-            Select::make('center_id')
-                ->label('مركز التحفيظ')
-                ->options(fn (): array => Center::query()
-                    ->where('is_active', true)
-                    ->orderBy('name')
-                    ->pluck('name', 'id')
-                    ->all()
-                )
-                ->searchable()
-                ->preload()
-                ->live()
-                ->visible(
-                    fn (): bool => Gate::allows('centers.view_all')
-                )
-                ->required(
-                    fn (): bool => Gate::allows('centers.view_all')
-                )
-                ->default(fn () => Auth::user()?->center_id)
-                ->dehydrated(),
+          
+     
+Select::make('center_id')
+    ->label('المركز الفرعي')
+    ->relationship(
+        name: 'center',
+        titleAttribute: 'name',
+        modifyQueryUsing: function (Builder $query): Builder {
+            $user = request()->user();
+
+            if (! $user) {
+                return $query->whereRaw('1 = 0');
+            }
+
+            $branchIds = StudentCenterAccess::branchIdsFor($user);
+
+            if ($branchIds === []) {
+                return $query->whereRaw('1 = 0');
+            }
+
+            return $query
+                ->whereIn('id', $branchIds)
+                ->orderBy('name');
+        }
+    )
+    ->default(function (): ?int {
+        $user = request()->user();
+
+        if (! $user || ! $user->hasRole('center_manager')) {
+            return null;
+        }
+
+        $branchIds = StudentCenterAccess::branchIdsFor($user);
+
+        // التحديد التلقائي فقط عندما يكون للمستخدم فرع واحد متاح.
+        if (count($branchIds) === 1) {
+            return $branchIds[0];
+        }
+
+        if (
+            $user->center_id !== null
+            && in_array((int) $user->center_id, $branchIds, true)
+        ) {
+            return (int) $user->center_id;
+        }
+
+        return null;
+    })
+   ->disabled(function (string $operation): bool {
+    $user = request()->user();
+
+    if (! $user?->hasRole('center_manager')) {
+        return false;
+    }
+
+    return $operation === 'edit'
+        || count(StudentCenterAccess::branchIdsFor($user)) <= 1;}),
 
             // رقم الطالب
             TextInput::make('student_code')

@@ -1,55 +1,41 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Filament\Resources\Students\Pages;
 
 use App\Filament\Resources\Students\StudentResource;
-use App\Models\Center;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Gate;
-use Illuminate\Validation\ValidationException;
+use App\Support\StudentCenterAccess;
 use Filament\Resources\Pages\CreateRecord;
+use Illuminate\Validation\ValidationException;
 
 class CreateStudent extends CreateRecord
 {
     protected static string $resource = StudentResource::class;
 
-    /**
-     * تجهيز بيانات الطالب قبل الحفظ.
-     */
-
     protected function mutateFormDataBeforeCreate(array $data): array
     {
-        $user = Auth::user();
+        $user = request()->user();
 
-        // التأكد من تسجيل الدخول
-       if (! $user) {
-            abort(403);
-        }
-        // مدير النظام يستطيع اختيار المركز
-        if (Gate::allows('centers.view')) {
-            $centerId = $data['center_id'] ?? null;
+        abort_unless($user, 403);
 
-            // يجب تحديد مركز صحيح
-            if (
-                ! $centerId ||
-                ! Center::query()->whereKey($centerId)->exists()
-            ) {
-                throw ValidationException::withMessages([
-                    'center_id' => 'يرجى اختيار مركز تحفيظ صحيح.',
-                ]);
-            }
+        abort_unless($user->can('create', \App\Models\Student::class), 403);
 
-            return $data;
+        $branchIds = StudentCenterAccess::branchIdsFor($user);
+
+        $centerId = $data['center_id'] ?? null;
+
+        if (
+            $centerId === null
+            || ! in_array((int) $centerId, $branchIds, true)
+        ) {
+            throw ValidationException::withMessages([
+                'center_id' => 'لا يمكنك إضافة طالب إلى هذا المركز الفرعي.',
+            ]);
         }
 
-        // المستخدم العادي يجب أن يكون مرتبطًا بمركز
-        if (! $user->center_id) {
-            abort(403, 'حسابك غير مرتبط بأي مركز.');
-        }
-
-        // فرض مركز المستخدم من الخادم
-        // حتى لو أرسل المتصفح center_id مختلفًا
-        $data['center_id'] = $user->center_id;
+        // نحفظ المركز الذي اختاره المستخدم من قائمة فروعه المصرح بها.
+        $data['center_id'] = (int) $centerId;
 
         return $data;
     }

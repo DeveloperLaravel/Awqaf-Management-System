@@ -4,72 +4,56 @@ declare(strict_types=1);
 
 namespace App\Policies;
 
-use Illuminate\Foundation\Auth\User as AuthUser;
 use App\Models\Guardian;
-use Illuminate\Auth\Access\HandlesAuthorization;
+use App\Models\User;
+use App\Services\CenterHierarchy;
 
 class GuardianPolicy
 {
-    use HandlesAuthorization;
-    
-    public function viewAny(AuthUser $authUser): bool
+    public function viewAny(User $user): bool
     {
-        return $authUser->can('ViewAny:Guardian');
+        return $user->can('guardians.view');
     }
 
-    public function view(AuthUser $authUser, Guardian $guardian): bool
+    public function view(User $user, Guardian $guardian): bool
     {
-        return $authUser->can('View:Guardian');
+        return $user->can('guardians.view')
+            && $this->canAccessCenter($user, $guardian);
     }
 
-    public function create(AuthUser $authUser): bool
+    public function create(User $user): bool
     {
-        return $authUser->can('Create:Guardian');
+        return $user->can('guardians.create');
     }
 
-    public function update(AuthUser $authUser, Guardian $guardian): bool
+    public function update(User $user, Guardian $guardian): bool
     {
-        return $authUser->can('Update:Guardian');
+        return $user->can('guardians.update')
+            && $this->canAccessCenter($user, $guardian);
     }
 
-    public function delete(AuthUser $authUser, Guardian $guardian): bool
+    public function delete(User $user, Guardian $guardian): bool
     {
-        return $authUser->can('Delete:Guardian');
+        return $user->can('guardians.delete')
+            && $this->canAccessCenter($user, $guardian);
     }
 
-    public function deleteAny(AuthUser $authUser): bool
+    public function deleteAny(User $user): bool
     {
-        return $authUser->can('DeleteAny:Guardian');
+        return $user->can('guardians.delete');
     }
 
-    public function restore(AuthUser $authUser, Guardian $guardian): bool
-    {
-        return $authUser->can('Restore:Guardian');
-    }
+    private function canAccessCenter(
+        User $user,
+        Guardian $guardian
+    ): bool {
+        if ($guardian->center_id === null) {
+            return false;
+        }
 
-    public function forceDelete(AuthUser $authUser, Guardian $guardian): bool
-    {
-        return $authUser->can('ForceDelete:Guardian');
+        return app(CenterHierarchy::class)->canUserAccess(
+            $user,
+            (int) $guardian->center_id
+        );
     }
-
-    public function forceDeleteAny(AuthUser $authUser): bool
-    {
-        return $authUser->can('ForceDeleteAny:Guardian');
-    }
-
-    public function restoreAny(AuthUser $authUser): bool
-    {
-        return $authUser->can('RestoreAny:Guardian');
-    }
-
-    public function replicate(AuthUser $authUser, Guardian $guardian): bool
-    {
-        return $authUser->can('Replicate:Guardian');
-    }
-
-    public function reorder(AuthUser $authUser): bool
-    {
-        return $authUser->can('Reorder:Guardian');
-    }
-
 }

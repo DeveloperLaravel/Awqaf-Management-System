@@ -104,10 +104,17 @@ public function finalApprover(): BelongsTo
     /**
      * المدرسون التابعون للمركز.
      */
-    public function teachers(): HasMany
-    {
-        return $this->hasMany(Teacher::class);
-    }
+ public function teachers(): BelongsToMany
+{
+    return $this->belongsToMany(
+        Teacher::class,
+        'center_teacher',
+        'center_id',
+        'teacher_id',
+    )
+        ->withPivot('is_active', 'joined_at')
+        ->withTimestamps();
+}
 
     /**
      * حلقات التحفيظ التابعة للمركز.

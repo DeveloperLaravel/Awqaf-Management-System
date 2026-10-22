@@ -4,72 +4,141 @@ declare(strict_types=1);
 
 namespace App\Policies;
 
-use Illuminate\Foundation\Auth\User as AuthUser;
 use App\Models\Circle;
-use Illuminate\Auth\Access\HandlesAuthorization;
+use App\Models\User;
 
 class CirclePolicy
 {
-    use HandlesAuthorization;
-    
-    public function viewAny(AuthUser $authUser): bool
+    /**
+     * عرض قائمة الحلقات.
+     */
+    public function viewAny(User $user): bool
     {
-        return $authUser->can('ViewAny:Circle');
+        if ($user->hasRole('super_admin')) {
+            return true;
+        }
+
+        if ($user->hasRole('center_manager')) {
+            return filled($user->center_id)
+                && $user->hasPermissionTo('circles.view', 'web');
+        }
+
+        if ($user->hasRole('teacher')) {
+            return $user->hasAnyPermission([
+                'circles.view',
+                'circles.view_own',
+            ]);
+        }
+
+        return false;
     }
 
-    public function view(AuthUser $authUser, Circle $circle): bool
+    /**
+     * عرض حلقة محددة.
+     */
+    public function view(User $user, Circle $circle): bool
     {
-        return $authUser->can('View:Circle');
+        if (! $this->canAccessCircle($user, $circle)) {
+            return false;
+        }
+
+        if ($user->hasRole('super_admin')) {
+            return true;
+        }
+
+        if ($user->hasRole('center_manager')) {
+            return $user->hasPermissionTo('circles.view', 'web');
+        }
+
+        return $user->hasAnyPermission([
+            'circles.view',
+            'circles.view_own',
+        ]);
     }
 
-    public function create(AuthUser $authUser): bool
+    /**
+     * إنشاء حلقة.
+     */
+    public function create(User $user): bool
     {
-        return $authUser->can('Create:Circle');
+        if ($user->hasRole('super_admin')) {
+            return true;
+        }
+
+        return $user->hasRole('center_manager')
+            && filled($user->center_id)
+            && $user->hasPermissionTo('circles.create', 'web');
     }
 
-    public function update(AuthUser $authUser, Circle $circle): bool
+    /**
+     * تعديل حلقة.
+     */
+    public function update(User $user, Circle $circle): bool
     {
-        return $authUser->can('Update:Circle');
+        if (! $this->canAccessCircle($user, $circle)) {
+            return false;
+        }
+
+        if ($user->hasRole('super_admin')) {
+            return true;
+        }
+
+        return $user->hasRole('center_manager')
+            && $user->hasPermissionTo('circles.update', 'web');
     }
 
-    public function delete(AuthUser $authUser, Circle $circle): bool
+    /**
+     * حذف حلقة.
+     */
+    public function delete(User $user, Circle $circle): bool
     {
-        return $authUser->can('Delete:Circle');
+        if (! $this->canAccessCircle($user, $circle)) {
+            return false;
+        }
+
+        if ($user->hasRole('super_admin')) {
+            return true;
+        }
+
+        return $user->hasRole('center_manager')
+            && $user->hasPermissionTo('circles.delete', 'web');
     }
 
-    public function deleteAny(AuthUser $authUser): bool
+    /**
+     * حذف عدة حلقات.
+     */
+    public function deleteAny(User $user): bool
     {
-        return $authUser->can('DeleteAny:Circle');
+        return $user->hasRole('super_admin')
+            || (
+                $user->hasRole('center_manager')
+                && filled($user->center_id)
+                && $user->hasPermissionTo('circles.delete', 'web')
+            );
     }
 
-    public function restore(AuthUser $authUser, Circle $circle): bool
-    {
-        return $authUser->can('Restore:Circle');
-    }
+    /**
+     * التحقق من أن الحلقة ضمن نطاق المستخدم.
+     */
+    private function canAccessCircle(
+        User $user,
+        Circle $circle
+    ): bool {
+        if ($user->hasRole('super_admin')) {
+            return true;
+        }
 
-    public function forceDelete(AuthUser $authUser, Circle $circle): bool
-    {
-        return $authUser->can('ForceDelete:Circle');
-    }
+        if ($user->hasRole('center_manager')) {
+            return filled($user->center_id)
+                && (int) $circle->center_id === (int) $user->center_id;
+        }
 
-    public function forceDeleteAny(AuthUser $authUser): bool
-    {
-        return $authUser->can('ForceDeleteAny:Circle');
-    }
+        if ($user->hasRole('teacher')) {
+            return $circle->teacher()
+                ->where('user_id', $user->getKey())
+                ->exists();
+        }
 
-    public function restoreAny(AuthUser $authUser): bool
-    {
-        return $authUser->can('RestoreAny:Circle');
+        return false;
     }
-
-    public function replicate(AuthUser $authUser, Circle $circle): bool
-    {
-        return $authUser->can('Replicate:Circle');
-    }
-
-    public function reorder(AuthUser $authUser): bool
-    {
-        return $authUser->can('Reorder:Circle');
-    }
-
 }

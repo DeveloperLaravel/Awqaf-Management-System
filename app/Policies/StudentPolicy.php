@@ -4,72 +4,112 @@ declare(strict_types=1);
 
 namespace App\Policies;
 
-use Illuminate\Foundation\Auth\User as AuthUser;
 use App\Models\Student;
-use Illuminate\Auth\Access\HandlesAuthorization;
+use App\Models\User;
+use App\Support\StudentCenterAccess;
 
 class StudentPolicy
 {
-    use HandlesAuthorization;
-    
-    public function viewAny(AuthUser $authUser): bool
+    public function before(User $user, string $ability): ?bool
     {
-        return $authUser->can('ViewAny:Student');
+        if ($user->hasRole('super_admin')) {
+            return true;
+        }
+
+        return null;
     }
 
-    public function view(AuthUser $authUser, Student $student): bool
+    private function hasPermission(User $user, array $permissions): bool
     {
-        return $authUser->can('View:Student');
+        return $user->hasAnyPermission($permissions);
     }
 
-    public function create(AuthUser $authUser): bool
+    public function viewAny(User $user): bool
     {
-        return $authUser->can('Create:Student');
+        return $user->hasRole('center_manager')
+            && StudentCenterAccess::branchIdsFor($user) !== []
+            && $this->hasPermission($user, [
+                'students.view',
+                'ViewAny:Student',
+            ]);
     }
 
-    public function update(AuthUser $authUser, Student $student): bool
+    public function view(User $user, Student $student): bool
     {
-        return $authUser->can('Update:Student');
+        return $user->hasRole('center_manager')
+            && StudentCenterAccess::canAccessBranch(
+                $user,
+                $student->center_id
+            )
+            && $this->hasPermission($user, [
+                'students.view',
+                'View:Student',
+            ]);
     }
 
-    public function delete(AuthUser $authUser, Student $student): bool
+    public function create(User $user): bool
     {
-        return $authUser->can('Delete:Student');
+        return $user->hasRole('center_manager')
+            && StudentCenterAccess::branchIdsFor($user) !== []
+            && $this->hasPermission($user, [
+                'students.create',
+                'Create:Student',
+            ]);
     }
 
-    public function deleteAny(AuthUser $authUser): bool
+    public function update(User $user, Student $student): bool
     {
-        return $authUser->can('DeleteAny:Student');
+        return $user->hasRole('center_manager')
+            && StudentCenterAccess::canAccessBranch(
+                $user,
+                $student->center_id
+            )
+            && $this->hasPermission($user, [
+                'students.update',
+                'Update:Student',
+            ]);
     }
 
-    public function restore(AuthUser $authUser, Student $student): bool
+    public function delete(User $user, Student $student): bool
     {
-        return $authUser->can('Restore:Student');
+        return $user->hasRole('center_manager')
+            && StudentCenterAccess::canAccessBranch(
+                $user,
+                $student->center_id
+            )
+            && $this->hasPermission($user, [
+                'students.delete',
+                'Delete:Student',
+            ]);
     }
 
-    public function forceDelete(AuthUser $authUser, Student $student): bool
+    public function deleteAny(User $user): bool
     {
-        return $authUser->can('ForceDelete:Student');
+        return $user->hasRole('center_manager')
+            && StudentCenterAccess::branchIdsFor($user) !== []
+            && $this->hasPermission($user, [
+                'students.delete',
+                'DeleteAny:Student',
+            ]);
     }
 
-    public function forceDeleteAny(AuthUser $authUser): bool
+    public function restore(User $user, Student $student): bool
     {
-        return $authUser->can('ForceDeleteAny:Student');
+        return false;
     }
 
-    public function restoreAny(AuthUser $authUser): bool
+    public function restoreAny(User $user): bool
     {
-        return $authUser->can('RestoreAny:Student');
+        return false;
     }
 
-    public function replicate(AuthUser $authUser, Student $student): bool
+    public function forceDelete(User $user, Student $student): bool
     {
-        return $authUser->can('Replicate:Student');
+        return false;
     }
 
-    public function reorder(AuthUser $authUser): bool
+    public function forceDeleteAny(User $user): bool
     {
-        return $authUser->can('Reorder:Student');
+        return false;
     }
-
 }
