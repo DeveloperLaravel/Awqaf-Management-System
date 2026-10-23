@@ -31,16 +31,438 @@
             padding: 0;
         }
 
-        html {
-            scroll-behavior: smooth;
-        }
+       
+/* تحسين التجاوب لجميع الشاشات */
 
-        body {
-            font-family: 'Cairo', sans-serif;
-            background: var(--cream);
-            color: var(--text);
-            line-height: 1.8;
-        }
+html {
+    width: 100%;
+    overflow-x: clip;
+    scroll-padding-top: 20px;
+}
+
+body {
+    width: 100%;
+    min-width: 320px;
+    margin: 0;
+    padding: 0;
+    font-family: 'Cairo', sans-serif;
+    overflow-wrap: break-word;
+}
+
+img {
+    max-width: 100%;
+}
+
+.container {
+    width: min(1160px, calc(100% - 40px));
+    margin-inline: auto;
+}
+
+/* الهيدر */
+header {
+    width: 100%;
+}
+
+.navbar {
+    min-height: 88px;
+    flex-wrap: wrap;
+    padding-block: 12px;
+}
+
+.brand {
+    min-width: 0;
+}
+
+.brand h1,
+.brand p {
+    overflow-wrap: anywhere;
+}
+
+.nav-actions {
+    flex-wrap: wrap;
+    min-width: 0;
+}
+
+.ministry {
+    min-width: 0;
+}
+
+.nav-actions img {
+    flex-shrink: 0;
+    object-fit: contain;
+}
+
+/* القسم الرئيسي */
+.hero {
+    width: 100%;
+}
+
+.hero-grid {
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+    gap: clamp(24px, 5vw, 65px);
+}
+
+.hero-copy,
+.hero-visual {
+    min-width: 0;
+}
+
+.hero h2 {
+    font-size: clamp(30px, 4.3vw, 57px);
+    overflow-wrap: anywhere;
+}
+
+.hero-description {
+    width: 100%;
+}
+
+.hero-buttons .btn {
+    min-height: 46px;
+}
+
+.hero-visual {
+    width: 100%;
+}
+
+.visual-frame {
+    width: 100%;
+    min-width: 0;
+}
+
+.visual-frame .quran-symbol {
+    display: block;
+    width: min(220px, 75%);
+    height: 135px;
+    object-fit: contain;
+    margin: 18px auto;
+    padding: 0;
+    line-height: normal;
+}
+
+.visual-bottom {
+    flex-wrap: wrap;
+}
+
+.floating-note {
+    max-width: calc(100% - 16px);
+}
+
+/* بطاقات المميزات */
+.features-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.feature-card {
+    min-width: 0;
+}
+
+.feature-card h3 {
+    overflow-wrap: anywhere;
+}
+
+/* الدعوة لتسجيل الدخول */
+.cta-box {
+    min-width: 0;
+}
+
+.cta-box > div {
+    min-width: 0;
+}
+
+.cta-box .btn {
+    flex-shrink: 0;
+}
+
+/* التذييل */
+.footer-grid {
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr) minmax(0, 1fr);
+}
+
+.footer-grid > div {
+    min-width: 0;
+}
+
+.footer-contact a {
+    overflow-wrap: anywhere;
+}
+
+.company-logo,
+.footer-contact img {
+    max-width: min(125px, 100%);
+    height: auto;
+}
+
+/* التابلت */
+@media (max-width: 900px) {
+    .container {
+        width: calc(100% - 32px);
+    }
+
+    .hero-grid {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 28px;
+    }
+
+    .hero-copy {
+        text-align: center;
+    }
+
+    .hero-description {
+        margin-inline: auto;
+    }
+
+    .hero-buttons,
+    .trust-line {
+        justify-content: center;
+    }
+
+    .hero-visual {
+        width: min(100%, 480px);
+        margin-inline: auto;
+    }
+
+    .features-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .footer-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .footer-brand {
+        grid-column: 1 / -1;
+    }
+}
+
+/* الهواتف */
+@media (max-width: 600px) {
+    .container {
+        width: calc(100% - 28px);
+    }
+
+    .navbar {
+        min-height: auto;
+        padding-block: 12px;
+        gap: 12px;
+    }
+
+    .brand {
+        flex: 1 1 150px;
+    }
+
+    .brand-mark {
+        flex-shrink: 0;
+    }
+
+    .brand h1 {
+        font-size: 17px;
+    }
+
+    .brand p {
+        font-size: 10px;
+    }
+
+    .nav-actions {
+        flex: 0 1 auto;
+        gap: 8px;
+    }
+
+    .ministry {
+        font-size: 11px;
+    }
+
+    .nav-actions > img {
+        width: 38px;
+        height: 38px;
+    }
+
+    .nav-actions .btn {
+        padding: 9px 12px;
+        font-size: 12px;
+    }
+
+    .hero {
+        padding: 42px 0;
+    }
+
+    .eyebrow {
+        font-size: 11px;
+        padding: 6px 11px;
+        margin-bottom: 16px;
+    }
+
+    .hero h2 {
+        font-size: clamp(28px, 7.5vw, 36px);
+        line-height: 1.55;
+        margin-bottom: 16px;
+    }
+
+    .hero-description {
+        font-size: 13px;
+        line-height: 2;
+        margin-bottom: 22px;
+    }
+
+    .hero-buttons {
+        gap: 9px;
+    }
+
+    .hero-buttons .btn {
+        flex: 1 1 135px;
+        padding: 11px 12px;
+        font-size: 12px;
+    }
+
+    .trust-line {
+        align-items: flex-start;
+        font-size: 11px;
+        text-align: right;
+    }
+
+    .hero-visual {
+        min-height: 0;
+        padding-bottom: 24px;
+    }
+
+    .visual-frame {
+        min-height: 0;
+        padding: 24px 18px;
+        border-radius: 23px;
+    }
+
+    .visual-frame .quran-symbol {
+        width: min(180px, 75%);
+        height: 110px;
+    }
+
+    .visual-frame h3 {
+        font-size: 22px;
+    }
+
+    .visual-frame > p {
+        font-size: 12px;
+    }
+
+    .visual-bottom {
+        font-size: 10px;
+        justify-content: center;
+        text-align: center;
+    }
+
+    .floating-note {
+        right: 8px;
+        bottom: 0;
+        font-size: 10px;
+        padding: 10px 12px;
+    }
+
+    .features,
+    .cta {
+        padding: 42px 0;
+    }
+
+    .section-heading {
+        margin-bottom: 26px;
+    }
+
+    .section-heading h2 {
+        font-size: 24px;
+        line-height: 1.6;
+    }
+
+    .section-heading p {
+        font-size: 12px;
+        line-height: 2;
+    }
+
+    .features-grid {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 13px;
+    }
+
+    .feature-card {
+        padding: 21px;
+        border-radius: 17px;
+    }
+
+    .feature-card h3 {
+        font-size: 16px;
+    }
+
+    .feature-card p {
+        font-size: 12px;
+    }
+
+    .cta-box {
+        padding: 25px 18px;
+        flex-direction: column;
+        align-items: stretch;
+        text-align: center;
+        border-radius: 20px;
+    }
+
+    .cta-box h2 {
+        font-size: 22px;
+        line-height: 1.6;
+    }
+
+    .cta-box p {
+        font-size: 12px;
+        line-height: 2;
+    }
+
+    .cta-box .btn {
+        width: 100%;
+        white-space: normal;
+    }
+
+    footer {
+        padding-top: 35px;
+    }
+
+    .footer-grid {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 24px;
+    }
+
+    .footer-brand {
+        grid-column: auto;
+    }
+
+    .footer-brand h3 {
+        font-size: 20px;
+    }
+
+    .footer-title {
+        font-size: 15px;
+    }
+
+    .copyright {
+        font-size: 10px;
+        line-height: 2;
+    }
+}
+
+/* الشاشات الصغيرة جدًا */
+@media (max-width: 360px) {
+    .navbar {
+        align-items: flex-start;
+    }
+
+    .nav-actions {
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    .hero h2 {
+        font-size: 27px;
+    }
+
+    .hero-buttons .btn {
+        flex-basis: 100%;
+    }
+}
+
 
         a {
             text-decoration: none;
@@ -684,8 +1106,9 @@
         }
     </style>
     </head>
-    <body class="bg-[#FDFDFC] dark:bg-[#0a0a0a] text-[#1b1b18] flex p-6 lg:p-8 items-center lg:justify-center min-h-screen flex-col">
-      <div class="container navbar">
+<body class="bg-[#FDFDFC] dark:bg-[#0a0a0a] text-[#1b1b18] flex p-6 lg:p-8 items-center lg:justify-center min-h-screen flex-col">     
+    <header>
+    <div class="container navbar">
 
         <a href="{{ url('/') }}" class="brand">
                                   {{-- <img src="{{ asset('images/1.jpg') }}"
