@@ -98,7 +98,7 @@ ENV PORT=10000
 COPY --from=dependencies /var/www/html /var/www/html
 
 # ملفات الواجهة المبنية بواسطة Vite
-COPY --from=frontend /app/public/build /var/www/html/public/build
+# COPY --from=frontend /app/public/build /var/www/html/public/build
 COPY --from=frontend /app/public/build ./public/build
 # إعداد Apache
 COPY docker/apache-vhost.conf \
