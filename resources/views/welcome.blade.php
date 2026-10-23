@@ -1107,7 +1107,6 @@ header {
     </style>
     </head>
 <body class="bg-[#FDFDFC] dark:bg-[#0a0a0a] text-[#1b1b18] flex p-6 lg:p-8 items-center lg:justify-center min-h-screen flex-col">     
-    <header>
     <div class="container navbar">
 
         <a href="{{ url('/') }}" class="brand">
@@ -1137,7 +1136,6 @@ header {
         </div>
 
     </div>
-</header>
 
 <main>
 
@@ -1318,15 +1316,17 @@ header {
                     onerror="this.style.display='none'"
                 >
 
-                <p>تطوير وتنفيذ: اسم الشركة المطورة</p>
+                <p>تطوير وتنفيذ: النوة التقنية </p>
                 <p>
-                    الموقع:
+                  
                     <a href="https://example.com" target="_blank"
                        rel="noopener noreferrer">example.com</a>
+                       :
+                               الموقع
                 </p>
                 <p>
                     الهاتف:
-                    <a href="tel:+218000000000">+218 00-0000000</a>
+                    <a href="tel:+218935425188">5425188  93- +218</a>
                 </p>
             </div>
 
