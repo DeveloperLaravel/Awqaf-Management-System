@@ -34,7 +34,7 @@ su -s /bin/sh www-data -c 'php artisan view:cache'
 
 # إنشاء رابط الملفات العامة إذا لم يكن موجودًا
 if [ ! -L public/storage ]; then
-    su -s /bin/sh www-data -c 'php artisan storage:link'
+    php artisan storage:link
 fi
 
 # لا تُشغّل الترحيلات تلقائيًا إلا عند طلب صريح
