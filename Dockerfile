@@ -1,27 +1,8 @@
+
 # syntax=docker/dockerfile:1
 
 # ==========================================
-# 1. بناء ملفات الواجهة الأمامية
-# ==========================================
-FROM node:22-bookworm-slim AS frontend
-
-WORKDIR /app
-
-COPY package*.json ./
-
-RUN if [ -f package-lock.json ]; then \
-        npm ci; \
-    else \
-        npm install; \
-    fi
-
-COPY . .
-
-RUN npm run build
-
-
-# ==========================================
-# 2. تجهيز PHP وامتداداته
+# 1. تجهيز PHP وامتداداته
 # ==========================================
 FROM php:8.3-apache-bookworm AS php-base
 
@@ -54,7 +35,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 
 # ==========================================
-# 3. تثبيت مكتبات Laravel باستخدام Composer
+# 2. تثبيت مكتبات Laravel وFilament
 # ==========================================
 FROM php-base AS dependencies
 
@@ -81,7 +62,31 @@ RUN composer dump-autoload \
 
 
 # ==========================================
-# 4. صورة التطبيق النهائية
+# 3. بناء ملفات الواجهة الأمامية
+# ==========================================
+FROM node:22-bookworm-slim AS frontend
+
+WORKDIR /app
+
+COPY package*.json ./
+
+RUN if [ -f package-lock.json ]; then \
+        npm ci; \
+    else \
+        npm install; \
+    fi
+
+COPY . .
+
+# نسخ ملفات Composer وFilament حتى يجدها Vite
+COPY --from=dependencies /var/www/html/vendor ./vendor
+
+# بناء ملفات CSS وJavaScript
+RUN npm run build
+
+
+# ==========================================
+# 4. تجهيز صورة التطبيق النهائية
 # ==========================================
 FROM php-base AS production
 
@@ -89,13 +94,17 @@ WORKDIR /var/www/html
 
 ENV PORT=10000
 
+# ملفات Laravel ومكتبات Composer
 COPY --from=dependencies /var/www/html /var/www/html
 
+# ملفات الواجهة المبنية بواسطة Vite
 COPY --from=frontend /app/public/build /var/www/html/public/build
 
+# إعداد Apache
 COPY docker/apache-vhost.conf \
     /etc/apache2/sites-available/000-default.conf
 
+# سكربت تشغيل التطبيق
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 
 RUN chmod +x /usr/local/bin/entrypoint.sh \
