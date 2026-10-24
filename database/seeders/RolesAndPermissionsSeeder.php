@@ -27,9 +27,53 @@ class RolesAndPermissionsSeeder extends Seeder
 {
     private const GUARD = 'web';
 
-    private const DEMO_PASSWORD = 'Manager123!';
+    private const TEACHERS_PER_BRANCH = 6;
+    private const CIRCLES_PER_BRANCH = 3;
+    private const STUDENTS_PER_BRANCH = 9;
 
-    private const TEACHERS_PER_BRANCH = 7;
+    /**
+     * توزيع الفروع:
+     * المركز الرئيسي الأول: 3 فروع.
+     * المركز الرئيسي الثاني: فرعان.
+     *
+     * هذه بيانات اختبار، وليست بيانات إنتاج.
+     */
+    private const ROOTS = [
+        [
+            'code' => 'CTR-DEMO-001',
+            'name' => 'مركز النور الرئيسي الأول',
+            'phone' => '0911000001',
+            'branches' => [
+                [
+                    'code' => 'CTR-DEMO-011',
+                    'name' => 'مركز النور فرع 1-1',
+                ],
+                [
+                    'code' => 'CTR-DEMO-012',
+                    'name' => 'مركز النور فرع 1-2',
+                ],
+                [
+                    'code' => 'CTR-DEMO-013',
+                    'name' => 'مركز النور فرع 1-3',
+                ],
+            ],
+        ],
+        [
+            'code' => 'CTR-DEMO-002',
+            'name' => 'مركز النور الرئيسي الثاني',
+            'phone' => '0911000002',
+            'branches' => [
+                [
+                    'code' => 'CTR-DEMO-021',
+                    'name' => 'مركز النور فرع 2-1',
+                ],
+                [
+                    'code' => 'CTR-DEMO-022',
+                    'name' => 'مركز النور فرع 2-2',
+                ],
+            ],
+        ],
+    ];
 
     public function run(): void
     {
@@ -42,92 +86,82 @@ class RolesAndPermissionsSeeder extends Seeder
             $superAdmin = $this->createSuperAdmin();
             $region = $this->createDemoRegion();
 
-            // المركز الرئيسي.
-            $root = $this->createDemoCenter(
-                region: $region,
-                code: 'CTR-DEMO-001',
-                name: 'مركز النور الرئيسي',
-                parent: null,
-                approvedBy: $superAdmin->getKey(),
-            );
-
-            // مدير المركز الرئيسي.
-            $rootManager = $this->createUser(
-                name: 'مدير المركز الرئيسي التجريبي',
-                email: 'demo.root.manager@example.com',
-                password: self::DEMO_PASSWORD,
-                role: 'center_manager',
-                center: $root,
-            );
-
-            $this->attachManager($rootManager, $root);
-
-            // إنشاء المركزين الفرعيين مع بيانات كل مركز.
-            $branches = [
-                [
-                    'code' => 'CTR-DEMO-002',
-                    'name' => 'مركز النور الفرعي الأول',
-                    'manager_name' => 'مدير الفرع الأول',
-                    'manager_email' => 'demo.branch1.manager@example.com',
-                    'phone' => '0910000002',
-                    'prefix' => 'الفرع الأول',
-                ],
-                [
-                    'code' => 'CTR-DEMO-003',
-                    'name' => 'مركز النور الفرعي الثاني',
-                    'manager_name' => 'مدير الفرع الثاني',
-                    'manager_email' => 'demo.branch2.manager@example.com',
-                    'phone' => '0910000003',
-                    'prefix' => 'الفرع الثاني',
-                ],
-            ];
-
-            foreach ($branches as $branch) {
-                $center = $this->createDemoCenter(
+            foreach (self::ROOTS as $rootData) {
+                $root = $this->createDemoCenter(
                     region: $region,
-                    code: $branch['code'],
-                    name: $branch['name'],
-                    parent: $root,
+                    code: $rootData['code'],
+                    name: $rootData['name'],
+                    parent: null,
                     approvedBy: $superAdmin->getKey(),
-                    parentApprovedBy: $rootManager->getKey(),
-                    phone: $branch['phone'],
+                    phone: $rootData['phone'],
                 );
 
-                $manager = $this->createUser(
-                    name: $branch['manager_name'],
-                    email: $branch['manager_email'],
-                    password: self::DEMO_PASSWORD,
+                $rootManager = $this->createUser(
+                    name: 'مدير ' . $rootData['name'],
+                    email: strtolower($rootData['code'])
+                        . '.manager@example.com',
+                    password: 'Manager123!',
                     role: 'center_manager',
-                    center: $center,
+                    center: $root,
                 );
 
-                $this->attachManager($manager, $center);
+                $this->attachManager($rootManager, $root);
 
-                $this->createBranchData(
-                    center: $center,
-                    prefix: $branch['prefix'],
-                );
+                foreach ($rootData['branches'] as $branchData) {
+                    $branch = $this->createDemoCenter(
+                        region: $region,
+                        code: $branchData['code'],
+                        name: $branchData['name'],
+                        parent: $root,
+                        approvedBy: $superAdmin->getKey(),
+                        parentApprovedBy: $rootManager->getKey(),
+                        phone: '091' . substr(
+                            preg_replace(
+                                '/\D/',
+                                '',
+                                $branchData['code']
+                            ) ?: '100000',
+                            -7
+                        ),
+                    );
+
+                    $branchManager = $this->createUser(
+                        name: 'مدير ' . $branchData['name'],
+                        email: strtolower($branchData['code'])
+                            . '.manager@example.com',
+                        password: 'Manager123!',
+                        role: 'center_manager',
+                        center: $branch,
+                    );
+
+                    $this->attachManager($branchManager, $branch);
+
+                    $this->createBranchData(
+                        center: $branch,
+                        prefix: $branchData['code'],
+                    );
+                }
             }
         });
 
         app(PermissionRegistrar::class)->forgetCachedPermissions();
 
         $this->command?->info(
-            'اكتمل إعداد الصلاحيات والمركز الرئيسي والمركزين الفرعيين.'
+            'اكتمل إعداد المركزين الرئيسيين والخمسة فروع.'
         );
 
         $this->command?->info(
-            'تم إعداد 7 معلمين و7 حلقات و7 أولياء أمور و7 طلاب '
-            . 'و7 سجلات حضور لكل مركز فرعي.'
+            'لكل فرع: 6 معلمين، 3 حلقات، 9 طلاب، '
+            . '9 أولياء أمور، وسجلات حضور.'
         );
 
         $this->command?->warn(
-            'كلمات المرور تجريبية. لا تستخدمها في الإنتاج.'
+            'حسابات الاختبار وكلمات مرورها غير مخصصة للإنتاج.'
         );
     }
 
     // ---------------------------------------------------------
-    // 1. الصلاحيات
+    // الصلاحيات
     // ---------------------------------------------------------
 
     private function createPermissions(): void
@@ -229,7 +263,7 @@ class RolesAndPermissionsSeeder extends Seeder
     }
 
     // ---------------------------------------------------------
-    // 2. الأدوار
+    // الأدوار
     // ---------------------------------------------------------
 
     private function createRoles(): void
@@ -239,22 +273,10 @@ class RolesAndPermissionsSeeder extends Seeder
             ->pluck('name')
             ->all();
 
-        /*
-         * مدير المركز لا يحصل على centers.view_all
-         * ولا teachers.manage_all.
-         *
-         * صلاحيات البيانات وحدها لا تكفي للعزل؛
-         * يجب أن تطبق Resources وPolicies نطاق المركز.
-         */
         $centerManagement = [
             'dashboard.view',
 
-
-
             'centers.view',
-            'circles.view_own',
-
-
             'centers.create_child',
             'centers.update',
             'centers.approve_child',
@@ -282,6 +304,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'students.update',
             'students.delete',
 
+            'circles.view_own',
             'circles.view',
             'circles.create',
             'circles.update',
@@ -319,8 +342,6 @@ class RolesAndPermissionsSeeder extends Seeder
 
             'center_manager' => $centerManagement,
 
-            // لا نمنح مدير المركز القدرة على إنشاء أدوار
-            // أو تعديل صلاحياتها من دون ضوابط إضافية.
             'center_admin' => [
                 ...$centerManagement,
                 'centers.delete',
@@ -440,7 +461,7 @@ class RolesAndPermissionsSeeder extends Seeder
                 ->whereIn('name', array_unique($permissionNames))
                 ->get();
 
-            // مزامنة صلاحيات الدور مع القائمة المحددة.
+            // يضبط صلاحيات الأدوار المذكورة أعلاه.
             $role->syncPermissions($permissions);
         }
 
@@ -448,11 +469,12 @@ class RolesAndPermissionsSeeder extends Seeder
     }
 
     // ---------------------------------------------------------
-    // 3. المدير العام
+    // المدير العام
     // ---------------------------------------------------------
 
     private function createSuperAdmin(): User
     {
+        /** @var User $user */
         $user = User::query()->firstOrCreate(
             ['email' => 'hnarfr20063@gmail.com'],
             [
@@ -468,15 +490,11 @@ class RolesAndPermissionsSeeder extends Seeder
 
         $user->syncRoles([$role]);
 
-        $this->command?->info(
-            'المدير العام: hnarfr20063@gmail.com / 12345678'
-        );
-
         return $user;
     }
 
     // ---------------------------------------------------------
-    // 4. المنطقة التجريبية
+    // المنطقة
     // ---------------------------------------------------------
 
     private function createDemoRegion(): Region
@@ -496,7 +514,7 @@ class RolesAndPermissionsSeeder extends Seeder
     }
 
     // ---------------------------------------------------------
-    // 5. إنشاء المراكز
+    // المراكز الرئيسية والفرعية
     // ---------------------------------------------------------
 
     private function createDemoCenter(
@@ -513,18 +531,19 @@ class RolesAndPermissionsSeeder extends Seeder
             'code' => $code,
             'region_id' => $region->getKey(),
             'parent_center_id' => $parent?->getKey(),
-            'phone' => $phone ?? '0910000001',
+            'phone' => $phone,
             'email' => strtolower($code) . '@example.com',
             'address' => 'عنوان تجريبي - طرابلس',
             'is_active' => true,
 
-            // استُخدمت القيمة الموجودة في Seeder الأصلي.
             'approval_status' => 'active',
-
             'approved_at' => now(),
             'approved_by' => $approvedBy,
 
-            'parent_approved_by' => $parentApprovedBy,
+            'parent_approved_by' => $parent
+                ? $parentApprovedBy
+                : null,
+
             'parent_approved_at' => $parent
                 ? now()
                 : null,
@@ -543,7 +562,7 @@ class RolesAndPermissionsSeeder extends Seeder
     }
 
     // ---------------------------------------------------------
-    // 6. إنشاء بيانات كل مركز فرعي
+    // بيانات كل مركز فرعي
     // ---------------------------------------------------------
 
     private function createBranchData(
@@ -556,9 +575,8 @@ class RolesAndPermissionsSeeder extends Seeder
 
         $centerCode = strtolower((string) $center->code);
 
-        // إنشاء 7 معلمين وحسابات دخولهم.
+        // 6 معلمين لكل فرع.
         for ($i = 1; $i <= self::TEACHERS_PER_BRANCH; $i++) {
-            $number = str_pad((string) $i, 3, '0', STR_PAD_LEFT);
             $name = "معلم {$prefix} {$i}";
             $email = "demo.{$centerCode}.teacher{$i}@example.com";
 
@@ -584,7 +602,7 @@ class RolesAndPermissionsSeeder extends Seeder
                     'phone' => sprintf(
                         '093%02d%04d',
                         (int) $center->getKey() % 100,
-                        $i
+                        $i,
                     ),
                     'email' => $email,
                     'qualification' => 'حافظ للقرآن الكريم',
@@ -594,26 +612,30 @@ class RolesAndPermissionsSeeder extends Seeder
             );
 
             $this->attachTeacherToCenter($teacher, $center);
-
             $teachers[] = $teacher;
+        }
 
-            // حلقة واحدة لكل معلم.
+        // 3 حلقات لكل فرع؛ كل حلقة لها معلم.
+        for ($i = 1; $i <= self::CIRCLES_PER_BRANCH; $i++) {
+            $number = str_pad((string) $i, 3, '0', STR_PAD_LEFT);
+            $circleCode = "{$center->code}-CIRCLE-{$number}";
+
             /** @var Circle $circle */
             $circle = $this->saveModel(
                 Circle::class,
                 [
                     'center_id' => $center->getKey(),
-                    'code' => "{$center->code}-CIRCLE-{$number}",
+                    'code' => $circleCode,
                 ],
                 [
                     'center_id' => $center->getKey(),
-                    'teacher_id' => $teacher->getKey(),
+                    'teacher_id' => $teachers[$i - 1]->getKey(),
                     'name' => "حلقة {$prefix} {$i}",
-                    'code' => "{$center->code}-CIRCLE-{$number}",
-                    'level' => match ($i % 3) {
-                        0 => 'advanced',
+                    'code' => $circleCode,
+                    'level' => match ($i) {
                         1 => 'beginner',
-                        default => 'intermediate',
+                        2 => 'intermediate',
+                        default => 'advanced',
                     },
                     'room' => 'قاعة ' . $i,
                     'capacity' => 20,
@@ -627,14 +649,15 @@ class RolesAndPermissionsSeeder extends Seeder
             $circles[] = $circle;
         }
 
-        // إنشاء 7 أولياء أمور.
-        for ($i = 1; $i <= 7; $i++) {
+        // 9 أولياء أمور لكل فرع.
+        for ($i = 1; $i <= self::STUDENTS_PER_BRANCH; $i++) {
             $name = "ولي الأمر {$prefix} {$i}";
             $email = "demo.{$centerCode}.guardian{$i}@example.com";
+
             $phone = sprintf(
                 '094%02d%04d',
                 (int) $center->getKey() % 100,
-                $i
+                $i,
             );
 
             $user = $this->createUser(
@@ -667,21 +690,22 @@ class RolesAndPermissionsSeeder extends Seeder
             $guardians[] = $guardian;
         }
 
-        // إنشاء 7 طلاب وربط كل طالب بولي أمر وحلقة وحضور اليوم.
-        for ($i = 1; $i <= 7; $i++) {
+        // 9 طلاب: 3 طلاب لكل حلقة.
+        for ($i = 1; $i <= self::STUDENTS_PER_BRANCH; $i++) {
             $number = str_pad((string) $i, 4, '0', STR_PAD_LEFT);
+            $studentCode = "{$center->code}-STU-{$number}";
 
             /** @var Student $student */
             $student = $this->saveModel(
                 Student::class,
                 [
                     'center_id' => $center->getKey(),
-                    'student_code' => "{$center->code}-STU-{$number}",
+                    'student_code' => $studentCode,
                 ],
                 [
                     'center_id' => $center->getKey(),
                     'guardian_id' => $guardians[$i - 1]->getKey(),
-                    'student_code' => "{$center->code}-STU-{$number}",
+                    'student_code' => $studentCode,
                     'full_name' => "الطالب {$prefix} {$i}",
                     'birth_date' => today()
                         ->subYears(8 + ($i % 6))
@@ -694,12 +718,13 @@ class RolesAndPermissionsSeeder extends Seeder
                 ],
             );
 
-            $circle = $circles[$i - 1];
-            $teacher = $teachers[$i - 1];
+            // توزيع الطلاب على الحلقات الثلاث.
+            $circleIndex = intdiv($i - 1, 3);
+            $circle = $circles[$circleIndex];
 
             $this->attachStudentToCircle($circle, $student);
 
-            // سجل حضور واحد لكل طالب بتاريخ اليوم.
+            // سجل حضور واحد لكل طالب.
             $this->saveModel(
                 AttendanceRecord::class,
                 [
@@ -711,7 +736,7 @@ class RolesAndPermissionsSeeder extends Seeder
                     'center_id' => $center->getKey(),
                     'student_id' => $student->getKey(),
                     'circle_id' => $circle->getKey(),
-                    'teacher_id' => $teacher->getKey(),
+                    'teacher_id' => $circle->teacher_id,
                     'attendance_date' => today()->toDateString(),
                     'status' => $this->attendanceStatus($i),
                     'notes' => 'سجل حضور تجريبي.',
@@ -720,12 +745,12 @@ class RolesAndPermissionsSeeder extends Seeder
         }
 
         $this->command?->info(
-            "اكتملت البيانات التجريبية للمركز: {$center->name}"
+            "اكتملت بيانات الفرع: {$center->name}"
         );
     }
 
     // ---------------------------------------------------------
-    // 7. إنشاء المستخدم وربطه بالدور والمركز
+    // إنشاء المستخدم وربطه بدوره ومركزه
     // ---------------------------------------------------------
 
     private function createUser(
@@ -735,21 +760,24 @@ class RolesAndPermissionsSeeder extends Seeder
         string $role,
         Center $center,
     ): User {
-        $attributes = [
-            'name' => $name,
-            'email' => $email,
-            'password' => Hash::make($password),
-            'center_id' => $center->getKey(),
-            'is_active' => true,
-            'email_verified_at' => now(),
-        ];
-
         /** @var User $user */
-        $user = $this->saveModel(
-            User::class,
-            ['email' => $email],
-            $attributes,
-        );
+        $user = User::query()->firstOrNew([
+            'email' => $email,
+        ]);
+
+        $isNew = ! $user->exists;
+
+        $user->name = $name;
+        $user->center_id = $center->getKey();
+        $user->is_active = true;
+        $user->email_verified_at ??= now();
+
+        // لا تغيّر كلمة المرور لحساب موجود.
+        if ($isNew || blank($user->password)) {
+            $user->password = Hash::make($password);
+        }
+
+        $user->save();
 
         $roleModel = Role::query()->firstOrCreate([
             'name' => $role,
@@ -762,7 +790,7 @@ class RolesAndPermissionsSeeder extends Seeder
     }
 
     // ---------------------------------------------------------
-    // 8. ربط مدير المركز بالمركز
+    // ربط المدير بالمركز
     // ---------------------------------------------------------
 
     private function attachManager(User $user, Center $center): void
@@ -779,10 +807,10 @@ class RolesAndPermissionsSeeder extends Seeder
             }
         }
 
-        // user.center_id هو الربط الأساسي في تصميم المشروع.
         if (
             Schema::hasColumn($user->getTable(), 'center_id')
-            && (string) $user->center_id !== (string) $center->getKey()
+            && (string) $user->center_id
+                !== (string) $center->getKey()
         ) {
             $user->forceFill([
                 'center_id' => $center->getKey(),
@@ -791,7 +819,7 @@ class RolesAndPermissionsSeeder extends Seeder
     }
 
     // ---------------------------------------------------------
-    // 9. ربط المعلم بالمركز عبر center_teacher
+    // ربط المعلم بالمركز
     // ---------------------------------------------------------
 
     private function attachTeacherToCenter(
@@ -814,7 +842,10 @@ class RolesAndPermissionsSeeder extends Seeder
         ];
 
         if (Schema::hasTable('center_teacher')) {
-            $pivot = $this->existingColumns('center_teacher', $pivot);
+            $pivot = $this->existingColumns(
+                'center_teacher',
+                $pivot,
+            );
         }
 
         $relation->syncWithoutDetaching([
@@ -823,7 +854,7 @@ class RolesAndPermissionsSeeder extends Seeder
     }
 
     // ---------------------------------------------------------
-    // 10. ربط الطالب بالحلقة
+    // ربط الطالب بالحلقة
     // ---------------------------------------------------------
 
     private function attachStudentToCircle(
@@ -842,7 +873,7 @@ class RolesAndPermissionsSeeder extends Seeder
             }
         }
 
-        // دعم تصميم آخر إذا كان students يحتوي circle_id.
+        // بديل إذا كان الطلاب مرتبطين عبر students.circle_id.
         if (Schema::hasColumn('students', 'circle_id')) {
             $student->forceFill([
                 'circle_id' => $circle->getKey(),
@@ -852,13 +883,13 @@ class RolesAndPermissionsSeeder extends Seeder
         }
 
         throw new RuntimeException(
-            'تعذر ربط الطالب بالحلقة. أضف علاقة students() '
-            . 'في Circle أو تحقق من جدول الربط circle_student.'
+            'تعذر ربط الطالب بالحلقة. تحقق من علاقة '
+            . 'Circle::students() أو عمود students.circle_id.'
         );
     }
 
     // ---------------------------------------------------------
-    // 11. حالات الحضور
+    // حالات الحضور
     // ---------------------------------------------------------
 
     private function attendanceStatus(int $number): string
@@ -872,7 +903,7 @@ class RolesAndPermissionsSeeder extends Seeder
     }
 
     // ---------------------------------------------------------
-    // 12. حفظ السجلات بصورة قابلة لإعادة التشغيل
+    // حفظ السجلات دون إنشاء نسخة مكررة عند إعادة التشغيل
     // ---------------------------------------------------------
 
     private function saveModel(
@@ -887,15 +918,14 @@ class RolesAndPermissionsSeeder extends Seeder
 
         if (! Schema::hasTable($table)) {
             throw new RuntimeException(
-                "الجدول {$table} غير موجود. شغّل migrations أولًا."
+                "الجدول {$table} غير موجود. تحقق من migrations."
             );
         }
 
         foreach (array_keys($identity) as $column) {
             if (! Schema::hasColumn($table, $column)) {
                 throw new RuntimeException(
-                    "العمود {$table}.{$column} غير موجود. "
-                    . 'راجع ملف Migration.'
+                    "العمود {$table}.{$column} غير موجود."
                 );
             }
         }
@@ -928,7 +958,7 @@ class RolesAndPermissionsSeeder extends Seeder
     }
 
     // ---------------------------------------------------------
-    // 13. فلترة الأعمدة وفق قاعدة البيانات الفعلية
+    // استخدام الأعمدة الموجودة فقط
     // ---------------------------------------------------------
 
     private function existingColumns(
