@@ -2,7 +2,7 @@
 # syntax=docker/dockerfile:1
 
 # ==========================================
-# 1. تجهيز PHP وامتداداته
+# 1. PHP + Apache + MySQL extensions
 # ==========================================
 FROM php:8.3-apache-bookworm AS php-base
 
@@ -33,9 +33,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-
 # ==========================================
-# 2. تثبيت مكتبات Laravel وFilament
+# 2. Composer + Laravel + Filament assets
 # ==========================================
 FROM php-base AS dependencies
 
@@ -60,9 +59,12 @@ RUN composer dump-autoload \
     --optimize \
     --no-scripts
 
+# Discover Laravel packages, then publish Filament assets.
+RUN php artisan package:discover --ansi \
+    && php artisan filament:assets
 
 # ==========================================
-# 3. بناء ملفات الواجهة الأمامية
+# 3. Build Vite assets
 # ==========================================
 FROM node:22-bookworm-slim AS frontend
 
@@ -78,15 +80,12 @@ RUN if [ -f package-lock.json ]; then \
 
 COPY . .
 
-# نسخ ملفات Composer وFilament حتى يجدها Vite
 COPY --from=dependencies /var/www/html/vendor ./vendor
 
-# بناء ملفات CSS وJavaScript
 RUN npm run build
 
-
 # ==========================================
-# 4. تجهيز صورة التطبيق النهائية
+# 4. Production image
 # ==========================================
 FROM php-base AS production
 
@@ -94,18 +93,13 @@ WORKDIR /var/www/html
 
 ENV PORT=10000
 
-# ملفات Laravel ومكتبات Composer
 COPY --from=dependencies /var/www/html /var/www/html
 
-# ملفات الواجهة المبنية بواسطة Vite
 COPY --from=frontend /app/public/build /var/www/html/public/build
 
-# COPY --from=frontend /app/public/build ./public/build
-# إعداد Apache
 COPY docker/apache-vhost.conf \
     /etc/apache2/sites-available/000-default.conf
 
-# سكربت تشغيل التطبيق
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 
 RUN chmod +x /usr/local/bin/entrypoint.sh \
