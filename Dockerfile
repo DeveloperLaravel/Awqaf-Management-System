@@ -61,7 +61,7 @@ RUN composer dump-autoload \
     --no-scripts
 
 RUN php artisan package:discover --ansi
-
+RUN php artisan filament:assets
 # ==========================================
 # 3. Build Vite assets
 # ==========================================
