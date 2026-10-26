@@ -37,6 +37,15 @@ public function region(): BelongsTo
     return $this->belongsTo(Region::class);
 }
 
+public function canAccessPanel(\Filament\Panel $panel): bool
+{
+    return $this->hasAnyRole([
+        'super_admin',
+        'center_admin',
+        'center_manager',
+    ]);
+}
+
 /**
  * المراكز المرتبطة بالمستخدم، مثل مدير المركز.
  */
