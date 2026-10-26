@@ -24,6 +24,7 @@ class DatabaseSeeder extends Seeder
             CircleSeeder::class,
             StudentSeeder::class,
             AttendanceRecordSeeder::class,
+            CreateCenterAdminAccountsSeeder::class,
         ]);
     }
 }

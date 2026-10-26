@@ -1,16 +1,15 @@
+
 #!/bin/sh
 
 set -eu
 
 cd /var/www/html
 
-# يجب ضبط APP_KEY في متغيرات بيئة Render
 if [ -z "${APP_KEY:-}" ]; then
     echo "ERROR: APP_KEY is missing. Configure it in Render Environment."
     exit 1
 fi
 
-# تجهيز المجلدات التي يحتاج Laravel إلى الكتابة فيها
 mkdir -p \
     storage/framework/cache/data \
     storage/framework/sessions \
@@ -20,26 +19,34 @@ mkdir -p \
 
 chown -R www-data:www-data storage bootstrap/cache
 
-# اكتشاف حزم Laravel
-su -s /bin/sh www-data -c 'php artisan package:discover --ansi'
+# Discover Laravel packages
+su -s /bin/sh www-data -c \
+    'php artisan package:discover --ansi'
 
-# نشر ملفات أصول Filament عند توفر الأمر في الإصدار المثبت
-if php artisan list --raw | grep -qx 'filament:assets'; then
-    su -s /bin/sh www-data -c 'php artisan filament:assets'
+# Publish Filament assets only if the command exists
+if su -s /bin/sh www-data -c \
+    "php artisan list --raw" | grep -qx 'filament:assets'; then
+    su -s /bin/sh www-data -c \
+        'php artisan filament:assets'
 fi
 
-# إنشاء ملفات الإعدادات المخبأة بعد ضبط متغيرات البيئة
-su -s /bin/sh www-data -c 'php artisan config:cache'
-su -s /bin/sh www-data -c 'php artisan view:cache'
+# Cache configuration and views
+su -s /bin/sh www-data -c \
+    'php artisan config:cache'
 
-# إنشاء رابط الملفات العامة إذا لم يكن موجودًا
+su -s /bin/sh www-data -c \
+    'php artisan view:cache'
+
+# Create public storage link when needed
 if [ ! -L public/storage ]; then
-    php artisan storage:link
+    su -s /bin/sh www-data -c \
+        'php artisan storage:link'
 fi
 
-# لا تُشغّل الترحيلات تلقائيًا إلا عند طلب صريح
+# Migrations are disabled unless explicitly enabled
 if [ "${RUN_MIGRATIONS:-false}" = "true" ]; then
-    su -s /bin/sh www-data -c 'php artisan migrate --force'
+    su -s /bin/sh www-data -c \
+        'php artisan migrate --force'
 fi
 
 exec "$@"

@@ -2,13 +2,14 @@
 # syntax=docker/dockerfile:1
 
 # ==========================================
-# 1. PHP + Apache + MySQL extensions
+# 1. PHP + Apache + PostgreSQL
 # ==========================================
 FROM php:8.3-apache-bookworm AS php-base
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     unzip \
     git \
+    libpq-dev \
     libzip-dev \
     libicu-dev \
     libpng-dev \
@@ -19,7 +20,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         --with-freetype \
         --with-jpeg \
     && docker-php-ext-install -j"$(nproc)" \
-        pdo_mysql \
+        pdo_pgsql \
         mbstring \
         exif \
         pcntl \
@@ -34,7 +35,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # ==========================================
-# 2. Composer + Laravel + Filament assets
+# 2. Composer dependencies
 # ==========================================
 FROM php-base AS dependencies
 
@@ -59,9 +60,7 @@ RUN composer dump-autoload \
     --optimize \
     --no-scripts
 
-# Discover Laravel packages, then publish Filament assets.
-RUN php artisan package:discover --ansi \
-    && php artisan filament:assets
+RUN php artisan package:discover --ansi
 
 # ==========================================
 # 3. Build Vite assets

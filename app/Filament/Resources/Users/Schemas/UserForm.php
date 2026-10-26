@@ -49,7 +49,7 @@ class UserForm
                 ->options(function (): array {
                     $user = request()->user();
 
-                    if (! $user || ! $user->hasPermissionTo('Create:User', 'web')) {
+                    if (! $user || ! $user->hasPermissionTo('users.create', 'web')) {
                         return [];
                     }
 

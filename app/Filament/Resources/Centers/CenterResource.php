@@ -51,7 +51,7 @@ public static function canViewAny(): bool
     return $user instanceof User
         && (
             $user->hasRole('super_admin')
-            || $user->hasPermissionTo('ViewAny:Center', 'web')
+            || $user->hasPermissionTo('centers.view_all', 'web')
         );
 }
     /**

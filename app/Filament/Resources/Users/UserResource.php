@@ -63,7 +63,7 @@ public static function getEloquentQuery(): Builder
     }
 
     // التحقق من صلاحية عرض قائمة المستخدمين.
-    if (! $user->hasPermissionTo('ViewAny:User', 'web')) {
+    if (! $user->hasPermissionTo('users.view', 'web')) {
         return $query->whereRaw('1 = 0');
     }
 
@@ -115,7 +115,7 @@ public static function getEloquentQuery(): Builder
     }
 
     return $user->hasRole('super_admin')
-        || $user->hasPermissionTo('ViewAny:User');
+        || $user->hasPermissionTo('users.view');
 }
 
     /**
@@ -130,7 +130,7 @@ public static function canCreate(): bool
     }
 
     return $user->hasRole('super_admin')
-        || $user->hasPermissionTo('Create:User', 'web');
+        || $user->hasPermissionTo('users.create', 'web');
 }
 
     /**
@@ -195,7 +195,7 @@ public static function canEdit(\Illuminate\Database\Eloquent\Model $record): boo
     }
 
     // التحقق من صلاحية التعديل لدى بقية المستخدمين.
-    if (! $user->hasPermissionTo('Update:User', 'web')) {
+    if (! $user->hasPermissionTo('users.update', 'web')) {
         return false;
     }
 

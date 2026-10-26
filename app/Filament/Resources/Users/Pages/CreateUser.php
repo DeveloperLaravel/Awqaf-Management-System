@@ -26,7 +26,7 @@ class CreateUser extends CreateRecord
     ! $user ||
     (
         ! $user->hasRole('super_admin') &&
-        ! $user->hasPermissionTo('Create:User', 'web')
+        ! $user->hasPermissionTo('users.create', 'web')
     )
 ) {
     abort(403, 'ليس لديك صلاحية إنشاء المستخدمين.');
