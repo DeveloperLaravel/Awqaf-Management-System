@@ -1,11 +1,25 @@
-$path = "docker\entrypoint.sh"
-$content = [System.IO.File]::ReadAllText((Resolve-Path $path))
-$content = $content -replace "^\uFEFF", ""
-$content = $content -replace "`r`n|`r", "`n"
 
-if (-not $content.StartsWith("#!/bin/sh")) {
-    $content = "#!/bin/sh`n" + $content
-}
+#!/bin/sh
+set -eu
 
-$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-[System.IO.File]::WriteAllText((Resolve-Path $path), $content, $utf8NoBom)
+cd /var/www/html
+
+# إعداد مجلدات Laravel
+mkdir -p \
+    storage/framework/cache/data \
+    storage/framework/sessions \
+    storage/framework/views \
+    storage/logs \
+    bootstrap/cache
+
+# ضبط الصلاحيات
+chown -R www-data:www-data storage bootstrap/cache
+
+# إنشاء مفتاح التطبيق إذا لم يكن مضبوطًا
+if [ -z "${APP_KEY:-}" ]; then
+    echo "ERROR: APP_KEY is not configured."
+    exit 1
+fi
+
+# تشغيل Apache
+exec "$@"
