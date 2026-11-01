@@ -38,7 +38,7 @@ class StudentResource extends Resource
      * المشرف العام يرى طلاب الفروع الفعالة والمعتمدة.
      * مدير المركز يرى طلاب الفروع المصرح بها لحسابه فقط.
      */
-    public static function getEloquentQuery(): Builder
+    public static function getEloquentQuلاery(): Builder
     {
         $query = parent::getEloquentQuery();
         $user = Auth::user();

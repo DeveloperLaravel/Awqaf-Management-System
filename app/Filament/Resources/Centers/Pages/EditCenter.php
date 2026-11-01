@@ -7,12 +7,12 @@ namespace App\Filament\Resources\Centers\Pages;
 use App\Filament\Resources\Centers\CenterResource;
 use App\Models\Center;
 use App\Models\User;
-use App\Services\CenterHierarchy;
 use Filament\Actions\DeleteAction;
 use Filament\Resources\Pages\EditRecord;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
-use Spatie\Permission\Models\Role;
+use Illuminate\Validation\ValidationException;
 
 class EditCenter extends EditRecord
 {
@@ -25,48 +25,40 @@ class EditCenter extends EditRecord
     {
         parent::authorizeAccess();
 
-        $user = request()->user();
+        $user = auth()->user();
 
         abort_unless($user instanceof User, 403);
 
-        $this->authorizeCenterAction($user, 'centers.update');
-    }
-
-    /**
-     * التحقق من صلاحية تنفيذ العملية على المركز.
-     */
-    protected function authorizeCenterAction(
-        User $user,
-        string $permission,
-    ): void {
-        abort_unless(
-            Gate::forUser($user)->allows($permission),
-            403,
-            'ليست لديك صلاحية تنفيذ هذه العملية.',
-        );
+        $record = $this->getRecord();
 
         abort_unless(
-            app(CenterHierarchy::class)->canUserAccess(
-                $user,
-                (int) $this->getRecord()->getKey(),
-            ),
+            $record instanceof Center
+            && Gate::forUser($user)->allows('update', $record),
             403,
-            'لا يمكنك تنفيذ هذه العملية على هذا المركز.',
+            'ليس لديك صلاحية تعديل هذا المركز.',
         );
     }
 
     /**
-     * حماية البيانات قبل حفظ التعديلات.
+     * حماية البيانات قبل الحفظ.
      */
     protected function mutateFormDataBeforeSave(array $data): array
     {
-        $user = request()->user();
+        $user = auth()->user();
 
         abort_unless($user instanceof User, 403);
 
-        $this->authorizeCenterAction($user, 'centers.update');
+        $center = $this->getRecord();
 
-        // منع تعديل بيانات المدير من النموذج العادي.
+        abort_unless($center instanceof Center, 404);
+
+        // التحقق من سياسة تعديل المركز.
+        Gate::forUser($user)->authorize('update', $center);
+
+        /*
+         * منع تعديل البيانات الإدارية الحساسة
+         * من نموذج التعديل العادي.
+         */
         unset(
             $data['manager_mode'],
             $data['manager_id'],
@@ -74,11 +66,11 @@ class EditCenter extends EditRecord
             $data['manager_email'],
             $data['manager_password'],
             $data['manager_password_confirmation'],
-        );
 
-        // لا نسمح بتغيير التسلسل الهرمي أو الاعتماد من النموذج.
-        unset(
+            // الحقول الهرمية.
             $data['parent_center_id'],
+
+            // حقول الاعتماد.
             $data['approval_status'],
             $data['is_active'],
             $data['parent_approved_by'],
@@ -88,7 +80,11 @@ class EditCenter extends EditRecord
             $data['rejection_reason'],
         );
 
-        // المنطقة قابلة للتغيير للمدير العام فقط.
+        /*
+         * المنطقة:
+         * المدير العام يستطيع تعديل منطقة المركز الرئيسي.
+         * بقية المستخدمين لا يستطيعون تغييرها.
+         */
         if (! $user->hasRole('super_admin')) {
             unset($data['region_id']);
         }
@@ -97,17 +93,15 @@ class EditCenter extends EditRecord
     }
 
     /**
-     * حفظ التعديلات وضمان دور مدير المركز.
+     * حفظ التعديلات داخل Transaction.
      */
     protected function handleRecordUpdate(
-        \Illuminate\Database\Eloquent\Model $record,
+        Model $record,
         array $data,
-    ): \Illuminate\Database\Eloquent\Model {
-        $user = request()->user();
+    ): Model {
+        $user = auth()->user();
 
         abort_unless($user instanceof User, 403);
-
-        $this->authorizeCenterAction($user, 'centers.update');
 
         abort_unless($record instanceof Center, 404);
 
@@ -116,66 +110,57 @@ class EditCenter extends EditRecord
             $data,
             $user,
         ): Center {
-            /** @var Center $center */
+
+            /*
+             * قفل سجل المركز أثناء التعديل.
+             */
             $center = Center::query()
                 ->whereKey($record->getKey())
                 ->lockForUpdate()
                 ->firstOrFail();
 
-            // حفظ البيانات المسموح بتعديلها.
+            /*
+             * إعادة التحقق من الصلاحية قبل الحفظ.
+             */
+            Gate::forUser($user)->authorize('update', $center);
+
+            /*
+             * منع تغيير المنطقة الموروثة للفروع.
+             */
+            if ($center->parent_center_id !== null) {
+                $parent = Center::query()
+                    ->whereKey($center->parent_center_id)
+                    ->first();
+
+                if (! $parent) {
+                    throw ValidationException::withMessages([
+                        'parent_center_id' =>
+                            'المركز الأب غير موجود.',
+                    ]);
+                }
+
+                $data['region_id'] = $parent->region_id;
+            }
+
+            /*
+             * حفظ البيانات المسموح بتعديلها.
+             */
             $center->fill($data);
             $center->save();
 
             /*
-             * تحديد الدور بناءً على نوع المركز المحفوظ.
+             * لا نغير أدوار المديرين هنا.
              *
-             * المركز الرئيسي: center_admin
-             * المركز الفرعي: center_manager
+             * لأن المستخدم قد يدير أكثر من مركز،
+             * وتغيير دوره عند تعديل مركز واحد قد يؤثر
+             * على صلاحياته في المراكز الأخرى.
+             *
+             * تعيين الأدوار يتم عند إنشاء المركز
+             * أو من خلال إدارة المستخدمين.
              */
-            $roleName = $center->parent_center_id === null
-                ? 'center_admin'
-                : 'center_manager';
-
-            /*
-             * لا نفترض أن منشئ المركز هو مديره.
-             * نزامن الدور مع المستخدمين المرتبطين حاليًا
-             * بهذا المركز عبر center_user.
-             */
-            $managerIds = $center->managedByUsers()
-                ->pluck('users.id');
-
-            foreach ($managerIds as $managerId) {
-                $manager = User::query()
-                    ->whereKey($managerId)
-                    ->lockForUpdate()
-                    ->first();
-
-                if (! $manager) {
-                    continue;
-                }
-
-                $this->assignCenterRole($manager, $roleName);
-            }
 
             return $center;
         });
-    }
-
-    /**
-     * إسناد الدور دون حذف الأدوار الأخرى.
-     */
-    protected function assignCenterRole(
-        User $user,
-        string $roleName,
-    ): void {
-        $role = Role::query()->firstOrCreate([
-            'name' => $roleName,
-            'guard_name' => 'web',
-        ]);
-
-        if (! $user->hasRole($role)) {
-            $user->assignRole($role);
-        }
     }
 
     /**
@@ -186,32 +171,27 @@ class EditCenter extends EditRecord
         return [
             DeleteAction::make()
                 ->label('حذف المركز')
-                ->visible(function (): bool {
-                    $user = request()->user();
+                ->icon('heroicon-o-trash')
+                ->color('danger')
 
-                    if (! $user instanceof User) {
-                        return false;
-                    }
-
-                    return Gate::forUser($user)->allows('centers.delete')
-                        && app(CenterHierarchy::class)->canUserAccess(
-                            $user,
-                            (int) $this->getRecord()->getKey(),
-                        );
-                })
-                ->authorize(function (): bool {
-                    $user = request()->user();
-
-                    if (! $user instanceof User) {
-                        return false;
-                    }
-
-                    return Gate::forUser($user)->allows('centers.delete')
-                        && app(CenterHierarchy::class)->canUserAccess(
-                            $user,
-                            (int) $this->getRecord()->getKey(),
-                        );
-                }),
+                /*
+                 * صلاحية الحذف تعتمد على CenterPolicy.
+                 * السياسة تمنع حذف مركز لديه فروع.
+                 */
+                ->visible(
+                    fn (): bool =>
+                        Gate::allows(
+                            'delete',
+                            $this->getRecord(),
+                        )
+                )
+                ->authorize(
+                    fn (): bool =>
+                        Gate::allows(
+                            'delete',
+                            $this->getRecord(),
+                        )
+                ),
         ];
     }
 

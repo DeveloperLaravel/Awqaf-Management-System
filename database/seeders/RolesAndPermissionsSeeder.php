@@ -79,77 +79,31 @@ class RolesAndPermissionsSeeder extends Seeder
      */
 
     private const ROOTS = [
-
         [
-
-            'code' => 'CTR-DEMO-001',
-
-            'name' => 'مركز النور الرئيسي الأول',
-
+            'region_code' => 'JALU-DEMO-01',
+            'region_name' => 'منطقة جالو التجريبية',
+            'city' => 'جالو',
+            'code' => 'JALU-CTR-001',
+            'name' => 'مركز جالو الرئيسي',
             'phone' => '0911000001',
-
             'branches' => [
-
-                [
-
-                    'code' => 'CTR-DEMO-011',
-
-                    'name' => 'مركز النور فرع 1-1',
-
-                ],
-
-                [
-
-                    'code' => 'CTR-DEMO-012',
-
-                    'name' => 'مركز النور فرع 1-2',
-
-                ],
-
-                [
-
-                    'code' => 'CTR-DEMO-013',
-
-                    'name' => 'مركز النور فرع 1-3',
-
-                ],
-
+                ['code' => 'JALU-CTR-011', 'name' => 'مركز جالو فرع 1'],
+                ['code' => 'JALU-CTR-012', 'name' => 'مركز جالو فرع 2'],
             ],
-
         ],
-
         [
-
-            'code' => 'CTR-DEMO-002',
-
-            'name' => 'مركز النور الرئيسي الثاني',
-
+            'region_code' => 'AWJ-DEMO-01',
+            'region_name' => 'منطقة أوجلة التجريبية',
+            'city' => 'أوجلة',
+            'code' => 'AWJ-CTR-001',
+            'name' => 'مركز أوجلة الرئيسي',
             'phone' => '0911000002',
-
             'branches' => [
-
-                [
-
-                    'code' => 'CTR-DEMO-021',
-
-                    'name' => 'مركز النور فرع 2-1',
-
-                ],
-
-                [
-
-                    'code' => 'CTR-DEMO-022',
-
-                    'name' => 'مركز النور فرع 2-2',
-
-                ],
-
+                ['code' => 'AWJ-CTR-011', 'name' => 'مركز أوجلة فرع 1'],
+                ['code' => 'AWJ-CTR-012', 'name' => 'مركز أوجلة فرع 2'],
             ],
-
         ],
-
     ];
-
 
 
     public function run(): void
@@ -170,14 +124,19 @@ class RolesAndPermissionsSeeder extends Seeder
 
             $superAdmin = $this->createSuperAdmin();
 
-            $region = $this->createDemoRegion();
-
-
+            // إنشاء منطقة مستقلة لكل مدينة دون حذف أو تعديل مناطق أخرى.
+            $regions = [];
+            foreach (self::ROOTS as $rootData) {
+                $regions[$rootData['region_code']] = $this->createDemoRegion(
+                    code: $rootData['region_code'],
+                    name: $rootData['region_name'],
+                );
+            }
 
             foreach (self::ROOTS as $rootData) {
+                $region = $regions[$rootData['region_code']];
 
                 $root = $this->createDemoCenter(
-
                     region: $region,
 
                     code: $rootData['code'],
@@ -260,7 +219,7 @@ class RolesAndPermissionsSeeder extends Seeder
 
                             . '.manager@example.com',
 
-                        password: '12345678',
+                        password: 'Manager123!',
 
                         role: 'center_manager',
 
@@ -296,7 +255,7 @@ class RolesAndPermissionsSeeder extends Seeder
 
         $this->command?->info(
 
-            'اكتمل إعداد المركزين الرئيسيين والخمسة فروع.'
+            'اكتمل إعداد منطقتي جالو وأوجلة، ومركزين رئيسيين وأربعة فروع.'
 
         );
 
@@ -340,6 +299,17 @@ class RolesAndPermissionsSeeder extends Seeder
 
 
 
+            'ViewAny:Role',
+            'View:Role',
+
+            'Create:Role',
+
+            'Update:Role',
+
+            'Delete:Role',
+
+
+
             'centers.view',
 
             'centers.view_all',
@@ -368,13 +338,7 @@ class RolesAndPermissionsSeeder extends Seeder
 
 
 
-            'roles.view',
-
-            'roles.create',
-
-            'roles.update',
-
-            'roles.delete',
+         
 
 
 
@@ -572,9 +536,11 @@ class RolesAndPermissionsSeeder extends Seeder
 
             'users.delete',
 
+            'ViewAny:Role',
 
 
-            'roles.view',
+
+            'View:Role',
 
             'regions.view',
 
@@ -996,34 +962,20 @@ class RolesAndPermissionsSeeder extends Seeder
 
 
 
-    private function createDemoRegion(): Region
-
+    private function createDemoRegion(string $code, string $name): Region
     {
-
         /** @var Region $region */
-
         $region = $this->saveModel(
-
             Region::class,
-
-            ['code' => 'TRP-DEMO-01'],
-
+            ['code' => $code],
             [
-
-                'name' => 'منطقة طرابلس التجريبية',
-
-                'description' => 'منطقة مخصصة لبيانات الاختبار.',
-
+                'name' => $name,
+                'description' => 'منطقة تجريبية لبيانات الاختبار.',
                 'is_active' => true,
-
             ],
-
         );
 
-
-
         return $region;
-
     }
 
 
@@ -1068,7 +1020,7 @@ class RolesAndPermissionsSeeder extends Seeder
 
             'email' => strtolower($code) . '@example.com',
 
-            'address' => 'عنوان تجريبي - طرابلس',
+            'address' => 'عنوان تجريبي - ' . $region->name,
 
             'is_active' => true,
 
@@ -1185,13 +1137,9 @@ class RolesAndPermissionsSeeder extends Seeder
                 Teacher::class,
 
                 [
-
-                    'center_id' => $center->getKey(),
-
+                    // هوية المعلم بالبريد لتوافق ربط center_teacher متعدد المراكز.
                     'email' => $email,
-
                 ],
-
                 [
 
                     'center_id' => $center->getKey(),

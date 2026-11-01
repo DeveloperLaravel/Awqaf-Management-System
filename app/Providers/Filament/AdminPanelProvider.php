@@ -33,6 +33,7 @@ class AdminPanelProvider extends PanelProvider
             ->login()
 ->plugins([
     FilamentShieldPlugin::make()
+      ->localizePermissionLabels()
         ->navigationGroup('إدارة النظام')
 
         ->navigationLabel('الأدوار والصلاحيات')

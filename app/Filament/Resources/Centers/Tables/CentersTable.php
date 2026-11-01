@@ -15,22 +15,66 @@ use Filament\Forms\Components\Textarea;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Collection;
+
 
 class CentersTable
 {
+/**
+ * إنشاء مسار هرمي للمركز من الجذر إلى المركز الحالي.
+ */
+protected static function getCenterHierarchyLabel(Center $record): string
+{
+    $names = [];
+    $current = $record;
+    $visited = [];
+
+    while ($current !== null) {
+        // منع الدوران إذا وجدت علاقة أبوية غير صحيحة.
+        if (in_array($current->getKey(), $visited, true)) {
+            break;
+        }
+
+        $visited[] = $current->getKey();
+
+        array_unshift($names, $current->name);
+
+        $current = $current->parentCenter;
+    }
+
+    return implode(' ← ', $names);
+}
+
     public static function configure(Table $table): Table
     {
         return $table
             ->columns([
-                TextColumn::make('name')
-                    ->label('اسم المركز')
-                    ->searchable()
-                    ->sortable()
-                    ->description(
-                        fn (Center $record): string =>
-                            $record->code ?: 'بدون رمز'
-                    ),
+               TextColumn::make('name')
+    ->label('المركز والفروع')
+    ->searchable()
+    ->sortable()
+    ->description(function (Center $record): string {
+        $level = 0;
+        $parent = $record->parentCenter;
+        $visited = [$record->getKey()];
 
+        while ($parent !== null) {
+            if (in_array($parent->getKey(), $visited, true)) {
+                break;
+            }
+
+            $visited[] = $parent->getKey();
+            $level++;
+            $parent = $parent->parentCenter;
+        }
+
+        $prefix = $level === 0
+            ? 'مركز رئيسي'
+            : '└─ فرع من: ' . ($record->parentCenter?->name ?? 'غير معروف');
+
+        return $prefix . ' | ' . ($record->code ?: 'بدون رمز');
+    }),
                 TextColumn::make('region.name')
                     ->label('المنطقة')
                     ->placeholder('غير محددة')

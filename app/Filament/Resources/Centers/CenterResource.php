@@ -33,197 +33,182 @@ class CenterResource extends Resource
 
     protected static ?int $navigationSort = 1;
 
-    /**
-     * مجموعة عناصر القائمة الجانبية.
-     */
     public static function getNavigationGroup(): ?string
     {
         return 'إدارة المراكز';
     }
 
     /**
-     * هل يستطيع المستخدم مشاهدة قائمة المراكز؟
+     * عرض قائمة المراكز.
      */
-public static function canViewAny(): bool
-{
-    $user = request()->user();
+    public static function canViewAny(): bool
+    {
+        $user = Auth::user();
 
-    return $user instanceof User
-        && (
-            $user->hasRole('super_admin')
-            || $user->hasPermissionTo('centers.view_all', 'web')
-        );
-}
+        return $user instanceof User
+            && Gate::forUser($user)->allows('viewAny', Center::class);
+    }
+
     /**
-     * هل يستطيع المستخدم مشاهدة مركز معين؟
+     * عرض مركز معين.
      */
     public static function canView(Model $record): bool
     {
         $user = Auth::user();
 
-        if (! $user instanceof User || ! $record instanceof Center) {
-            return false;
-        }
-
-        return Gate::forUser($user)->allows('view', $record);
+        return $user instanceof User
+            && $record instanceof Center
+            && Gate::forUser($user)->allows('view', $record);
     }
-    
 
     /**
-     * هل يستطيع إنشاء مركز؟
+     * إنشاء مركز أو فرع وفق سياسة المستخدم.
      */
-public static function canCreate(): bool
-{
-    $user = request()->user();
+    public static function canCreate(): bool
+    {
+        $user = Auth::user();
 
-    if (! $user instanceof User) {
-        return false;
+        return $user instanceof User
+            && Gate::forUser($user)->allows('create', Center::class);
     }
 
-    // المدير العام يحتاج صلاحية إنشاء المراكز.
-    if ($user->hasRole('super_admin')) {
-        return $user->hasPermissionTo('Create:Center');
-    }
-
-    // بقية المديرين يمكنهم بدء إنشاء مركز فرعي فقط.
-    return $user->hasPermissionTo('Create:Center')
-        && (
-            $user->center_id !== null
-            || $user->managedCenters()->exists()
-        );
-}
     /**
-     * هل يستطيع تعديل المركز المحدد؟
+     * تعديل مركز.
      */
     public static function canEdit(Model $record): bool
     {
         $user = Auth::user();
 
-        if (! $user instanceof User || ! $record instanceof Center) {
-            return false;
-        }
-
-        return Gate::forUser($user)->allows('update', $record);
+        return $user instanceof User
+            && $record instanceof Center
+            && Gate::forUser($user)->allows('update', $record);
     }
 
     /**
-     * هل يستطيع حذف المركز المحدد؟
+     * حذف مركز.
      */
     public static function canDelete(Model $record): bool
     {
         $user = Auth::user();
 
-        if (! $user instanceof User || ! $record instanceof Center) {
-            return false;
-        }
-
-        return Gate::forUser($user)->allows('delete', $record);
+        return $user instanceof User
+            && $record instanceof Center
+            && Gate::forUser($user)->allows('delete', $record);
     }
 
     /**
-     * تحديد المراكز التي يمكن للمستخدم عرضها.
+     * منع الحذف الجماعي.
      */
-    
-public static function getEloquentQuery(): Builder
-{
-    $query = parent::getEloquentQuery()
-        ->with(['region', 'parentCenter']);
-
-    $user = request()->user();
-
-    if (! $user instanceof User) {
-        return $query->whereRaw('1 = 0');
-    }
-
-    if ($user->hasRole('super_admin')) {
-        return $query;
-    }
-
-    if (! $user->hasPermissionTo('ViewAny:Center')) {
-        return $query->whereRaw('1 = 0');
-    }
-
-    $centerIds = app(CenterHierarchy::class)
-        ->accessibleIdsForUser($user);
-
-    if ($centerIds === []) {
-        return $query->whereRaw('1 = 0');
-    }
-
-    return $query->whereIn('centers.id', $centerIds);
-}
-
-
-    /**
-     * التحقق من إمكانية الوصول إلى مركز محدد.
-     */
-    protected static function userCanAccessCenter(
-        User $user,
-        Center $center,
-    ): bool {
-        if ($user->hasRole('super_admin')) {
-            return $user->can('centers.view_all');
-        }
-
-        return Gate::forUser($user)->allows('centers.access', $center);
-    }
-
-    /**
-     * إرجاع معرفات المراكز التي يستطيع المستخدم الوصول إليها.
-     */
-    protected static function accessibleCenterIds(User $user): array
+    public static function canDeleteAny(): bool
     {
-        $assignedIds = $user->managedCenters()
-            ->pluck('centers.id')
-            ->map(fn ($id): int => (int) $id)
-            ->all();
-
-        // دعم المستخدمين المرتبطين بمركز عبر center_id.
-        if ($user->center_id !== null) {
-            $assignedIds[] = (int) $user->center_id;
-        }
-
-        $assignedIds = array_values(array_unique($assignedIds));
-
-        if ($assignedIds === []) {
-            return [];
-        }
-
-        $hierarchy = app(CenterHierarchy::class);
-        $accessibleIds = [];
-
-        foreach ($assignedIds as $centerId) {
-            $accessibleIds = array_merge(
-                $accessibleIds,
-                $hierarchy->accessibleIds($centerId),
-            );
-        }
-
-        return array_values(array_unique(array_map(
-            'intval',
-            $accessibleIds,
-        )));
+        return false;
     }
 
     /**
-     * نموذج إنشاء وتعديل المركز.
+     * نطاق المراكز التي تظهر للمستخدم،
+     * مع ترتيب المراكز والفروع بصورة هرمية.
      */
+    public static function getEloquentQuery(): Builder
+    {
+        $query = parent::getEloquentQuery()
+            ->with([
+                'region',
+                'parentCenter',
+            ]);
+
+        $user = Auth::user();
+
+        if (! $user instanceof User) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        /*
+         * المدير العام يرى جميع المراكز.
+         */
+        if ($user->hasRole('super_admin')) {
+            return self::applyHierarchyOrder($query);
+        }
+
+        /*
+         * التحقق من صلاحية عرض قائمة المراكز.
+         */
+        if (! Gate::forUser($user)->allows('viewAny', Center::class)) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        /*
+         * صلاحية العرض الشامل.
+         */
+        if ($user->hasPermissionTo('centers.view_all', 'web')) {
+            return self::applyHierarchyOrder($query);
+        }
+
+        /*
+         * جلب المركز والمراكز التابعة للمستخدم
+         * وفق خدمة CenterHierarchy.
+         */
+        $centerIds = collect(
+            app(CenterHierarchy::class)->accessibleIdsForUser($user)
+        )->all();
+
+        if (empty($centerIds)) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return self::applyHierarchyOrder(
+            $query->whereIn('centers.id', $centerIds)
+        );
+    }
+
+    /**
+     * ترتيب المراكز حسب الشجرة الهرمية.
+     *
+     * المركز الرئيسي أولاً، ثم فروعه،
+     * ثم فروع تلك الفروع، وهكذا.
+     *
+     * يستخدم PostgreSQL Recursive CTE.
+     */
+    protected static function applyHierarchyOrder(Builder $query): Builder
+    {
+        return $query->orderByRaw("
+            (
+                WITH RECURSIVE center_tree AS (
+                    SELECT
+                        id,
+                        parent_center_id,
+                        ARRAY[id] AS hierarchy_path
+                    FROM centers
+                    WHERE parent_center_id IS NULL
+
+                    UNION ALL
+
+                    SELECT
+                        child.id,
+                        child.parent_center_id,
+                        parent.hierarchy_path || child.id
+                    FROM centers AS child
+                    INNER JOIN center_tree AS parent
+                        ON child.parent_center_id = parent.id
+                    WHERE NOT child.id = ANY(parent.hierarchy_path)
+                )
+                SELECT hierarchy_path
+                FROM center_tree
+                WHERE center_tree.id = centers.id
+            ) ASC NULLS LAST,
+            centers.id ASC
+        ");
+    }
+
     public static function form(Schema $schema): Schema
     {
         return CenterForm::configure($schema);
     }
 
-    /**
-     * جدول المراكز.
-     */
     public static function table(Table $table): Table
     {
         return CentersTable::configure($table);
     }
 
-    /**
-     * صفحات المورد.
-     */
     public static function getPages(): array
     {
         return [

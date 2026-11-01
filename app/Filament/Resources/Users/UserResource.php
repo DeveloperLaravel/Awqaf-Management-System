@@ -31,236 +31,139 @@ class UserResource extends Resource
         'heroicon-o-users';
 
     protected static string|\UnitEnum|null $navigationGroup =
-       'إدارة المراكز';
-    
+        'إدارة المراكز';
+
     protected static ?int $navigationSort = 3;
 
-    /**
-     * إظهار المورد في القائمة عند امتلاك صلاحية العرض.
-     * المدير العام يتجاوز الصلاحيات عبر Gate::before.
-     */
+    /*
+    |--------------------------------------------------------------------------
+    | Query Scope
+    |--------------------------------------------------------------------------
+    */
 
+    public static function getEloquentQuery(): Builder
+    {
+        $query = parent::getEloquentQuery();
 
-    /**
-     * تحديد المستخدمين الذين يمكن عرضهم.
-     * المدير العام يرى جميع المراكز.
-     * المستخدم العادي يرى مستخدمي مركزه فقط.
-     */
- 
-public static function getEloquentQuery(): Builder
-{
-    $query = parent::getEloquentQuery();
+        $user = Auth::user();
 
-    $user = request()->user();
+        if (! $user instanceof User) {
+            return $query->whereRaw('1 = 0');
+        }
 
-    if (! $user instanceof \App\Models\User) {
-        return $query->whereRaw('1 = 0');
+        // المدير العام يرى جميع المستخدمين.
+        if ($user->hasRole('super_admin')) {
+            return $query;
+        }
+
+        // لا يمكن عرض القائمة دون صلاحية ViewAny:User.
+        if (! Gate::allows('viewAny', User::class)) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        $centerIds = app(CenterHierarchy::class)
+            ->accessibleIdsForUser($user);
+
+        if ($centerIds === []) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $query
+            ->whereIn('center_id', $centerIds)
+
+            // إخفاء حسابات المدير العام عن بقية المستخدمين.
+            ->whereDoesntHave('roles', function (Builder $rolesQuery) {
+                $rolesQuery
+                    ->where('name', 'super_admin')
+                    ->where('guard_name', 'web');
+            });
     }
 
-    // المدير العام يستطيع مشاهدة جميع المستخدمين.
-    if ($user->hasRole('super_admin')) {
-        return $query;
-    }
+    /*
+    |--------------------------------------------------------------------------
+    | Form
+    |--------------------------------------------------------------------------
+    */
 
-    // التحقق من صلاحية عرض قائمة المستخدمين.
-    if (! $user->hasPermissionTo('users.view', 'web')) {
-        return $query->whereRaw('1 = 0');
-    }
-
-    // جلب المراكز التي يستطيع المستخدم الوصول إليها.
-    $centerIds = app(
-        \App\Services\CenterHierarchy::class
-    )->accessibleIdsForUser($user);
-
-    if ($centerIds === []) {
-        return $query->whereRaw('1 = 0');
-    }
-
-    // عرض المستخدمين المرتبطين بالمراكز المسموح بها فقط.
-    return $query->whereIn(
-        $query->getModel()->qualifyColumn('center_id'),
-        $centerIds,
-    );
-}
-
-    /**
-     * نموذج إنشاء المستخدم وتعديله.
-     */
     public static function form(Schema $schema): Schema
     {
         return UserForm::configure($schema);
     }
 
-    /**
-     * جدول المستخدمين.
-     */
+    /*
+    |--------------------------------------------------------------------------
+    | Table
+    |--------------------------------------------------------------------------
+    */
+
     public static function table(Table $table): Table
     {
         return UsersTable::configure($table);
     }
 
-    /**
-     * هل يستطيع المستخدم مشاهدة قائمة المستخدمين؟
-     */
-        public static function shouldRegisterNavigation(): bool
+    /*
+    |--------------------------------------------------------------------------
+    | Navigation
+    |--------------------------------------------------------------------------
+    */
+
+    public static function shouldRegisterNavigation(): bool
     {
         return static::canViewAny();
     }
- public static function canViewAny(): bool
-{
-    $user = request()->user();
 
-    if (! $user instanceof \App\Models\User) {
-        return false;
+    /*
+    |--------------------------------------------------------------------------
+    | Authorization
+    |--------------------------------------------------------------------------
+    */
+
+    public static function canViewAny(): bool
+    {
+        return Gate::allows('viewAny', User::class);
     }
 
-    return $user->hasRole('super_admin')
-        || $user->hasPermissionTo('users.view');
-}
-
-    /**
-     * هل يستطيع إنشاء مستخدم؟
-     */
-public static function canCreate(): bool
-{
-    $user = request()->user();
-
-    if (! $user instanceof User) {
-        return false;
+    public static function canCreate(): bool
+    {
+        return Gate::allows('create', User::class);
     }
 
-    return $user->hasRole('super_admin')
-        || $user->hasPermissionTo('users.create', 'web');
-}
-
-    /**
-     * هل يستطيع مشاهدة سجل مستخدم محدد؟
-     */
     public static function canView(Model $record): bool
     {
-        if (! $record instanceof User) {
-            return false;
-        }
-
-        $user = request()->user();
-
-        if (! $user instanceof User) {
-            return false;
-        }
-
-        if (! Gate::allows('users.view')) {
-            return false;
-        }
-
-        if ($user->hasRole('super_admin')) {
-            return true;
-        }
-
-        return $user->center_id !== null
-            && (int) $record->center_id === (int) $user->center_id;
+        return $record instanceof User
+            && Gate::allows('view', $record);
     }
 
-    /**
-     * هل يستطيع تعديل مستخدم؟
-     */
-   
-public static function canEdit(\Illuminate\Database\Eloquent\Model $record): bool
-{
-    if (! $record instanceof User) {
-        return false;
+    public static function canEdit(Model $record): bool
+    {
+        return $record instanceof User
+            && Gate::allows('update', $record);
     }
 
-    $user = request()->user();
-
-    if (! $user instanceof User) {
-        return false;
-    }
-
-    // منع تعديل الحساب الشخصي من خلال هذا المورد.
-    if ($record->is($user)) {
-        return false;
-    }
-
-    // منع تعديل حسابات المدير العام من غير المدير العام.
-    if (
-        $record->hasRole('super_admin')
-        && ! $user->hasRole('super_admin')
-    ) {
-        return false;
-    }
-
-    // المدير العام يستطيع تعديل حسابات المستخدمين الآخرين.
-    if ($user->hasRole('super_admin')) {
-        return true;
-    }
-
-    // التحقق من صلاحية التعديل لدى بقية المستخدمين.
-    if (! $user->hasPermissionTo('users.update', 'web')) {
-        return false;
-    }
-
-    // السماح بالتعديل فقط داخل المراكز التي يمكن الوصول إليها.
-    $centerIds = app(
-        \App\Services\CenterHierarchy::class
-    )->accessibleIdsForUser($user);
-
-    return $record->center_id !== null
-        && in_array(
-            (int) $record->center_id,
-            array_map('intval', $centerIds),
-            true,
-        );
-}
-
-    /**
-     * هل يستطيع حذف مستخدم؟
-     */
     public static function canDelete(Model $record): bool
     {
-        if (! $record instanceof User) {
-            return false;
-        }
-
-        $user = request()->user();
-
-        if (! $user instanceof User) {
-            return false;
-        }
-
-        // منع حذف الحساب الحالي.
-        if ($record->is($user)) {
-            return false;
-        }
-
-        // منع حذف حساب المدير العام.
-        if ($record->hasRole('super_admin')) {
-            return false;
-        }
-
-        if (! Gate::allows('users.delete')) {
-            return false;
-        }
-
-        if ($user->hasRole('super_admin')) {
-            return true;
-        }
-
-        return $user->center_id !== null
-            && (int) $record->center_id === (int) $user->center_id;
+        return $record instanceof User
+            && Gate::allows('delete', $record);
     }
 
-    /**
-     * صلاحية الحذف الجماعي.
-     * يُعاد التحقق من كل سجل على حدة أيضًا.
-     */
- public static function canDeleteAny(): bool
-{
-    return Auth::check()
-        && Gate::allows('users.delete');
-}
-    /**
-     * صفحات المورد.
-     */
+    /*
+    |--------------------------------------------------------------------------
+    | Bulk Actions
+    |--------------------------------------------------------------------------
+    */
+
+    public static function canDeleteAny(): bool
+    {
+        // الحذف الجماعي معطل لحماية الحسابات الحساسة.
+        return false;
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | Pages
+    |--------------------------------------------------------------------------
+    */
+
     public static function getPages(): array
     {
         return [

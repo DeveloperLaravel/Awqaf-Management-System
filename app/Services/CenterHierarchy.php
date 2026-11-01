@@ -19,6 +19,12 @@ class CenterHierarchy
      */
     public function accessibleIds(int $centerId): array
     {
+
+   // التحقق من وجود المركز قبل البحث عن المراكز التابعة له.
+    if (! Center::query()->whereKey($centerId)->exists()) {
+        return [];
+    }
+
         $allIds = [];
         $pendingIds = [$centerId];
 
@@ -109,6 +115,11 @@ class CenterHierarchy
      */
     public function canUserAccess(User $user, int $targetCenterId): bool
     {
+          // لا تسمح بالوصول إلى مركز غير موجود.
+    if (! Center::query()->whereKey($targetCenterId)->exists()) {
+        return false;
+    }
+
         if ($user->hasRole('super_admin')) {
             return true;
         }

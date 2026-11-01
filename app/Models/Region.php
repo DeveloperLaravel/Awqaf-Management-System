@@ -4,10 +4,8 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-use Spatie\Permission\Traits\HasRoles;
 class Region extends Model
 {
-    use HasRoles;
     protected $fillable = [
         'name',
         'code',
@@ -22,12 +20,19 @@ class Region extends Model
         ];
     }
 
+   /**
+     * المراكز التابعة للمنطقة.
+     */
     public function centers(): HasMany
     {
-        return $this->hasMany(Center::class);
+        return $this->hasMany(Center::class, 'region_id');
     }
-     public function users(): HasMany
+
+    /**
+     * المستخدمون المرتبطون مباشرة بالمنطقة.
+     */
+    public function users(): HasMany
     {
-        return $this->hasMany(User::class);
+        return $this->hasMany(User::class, 'region_id');
     }
 }

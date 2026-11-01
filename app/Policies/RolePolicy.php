@@ -6,15 +6,13 @@ namespace App\Policies;
 
 use Illuminate\Foundation\Auth\User as AuthUser;
 use Spatie\Permission\Models\Role;
-use Illuminate\Auth\Access\HandlesAuthorization;
 
 class RolePolicy
 {
-    use HandlesAuthorization;
-    
     public function viewAny(AuthUser $authUser): bool
     {
         return $authUser->can('ViewAny:Role');
+        
     }
 
     public function view(AuthUser $authUser, Role $role): bool
@@ -27,10 +25,15 @@ class RolePolicy
         return $authUser->can('Create:Role');
     }
 
-    public function update(AuthUser $authUser, Role $role): bool
-    {
-        return $authUser->can('Update:Role');
+  public function update(AuthUser $authUser, Role $role): bool
+{
+    // منع تعديل دور المدير العام.
+    if ($role->name === 'super_admin') {
+        return false;
     }
+
+    return $authUser->can('Update:Role');
+}
 
     public function delete(AuthUser $authUser, Role $role): bool
     {
@@ -71,5 +74,4 @@ class RolePolicy
     {
         return $authUser->can('Reorder:Role');
     }
-
 }

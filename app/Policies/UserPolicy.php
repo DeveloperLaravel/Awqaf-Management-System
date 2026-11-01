@@ -1,72 +1,122 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Policies;
 
-use Illuminate\Foundation\Auth\User as AuthUser;
-use Illuminate\Auth\Access\HandlesAuthorization;
+use App\Models\User;
+use App\Services\CenterHierarchy;
 
 class UserPolicy
 {
-    use HandlesAuthorization;
-    
-    public function viewAny(AuthUser $authUser): bool
+    /**
+     * هل يستطيع المستخدم الوصول إلى مركز المستخدم المستهدف؟
+     */
+    private function canAccessUser(User $authUser, User $user): bool
     {
-        return $authUser->can('ViewAny:User');
+        if ($user->center_id === null) {
+            return false;
+        }
+
+        $centerIds = app(CenterHierarchy::class)
+            ->accessibleIdsForUser($authUser);
+
+        return in_array(
+            (int) $user->center_id,
+            array_map('intval', $centerIds),
+            true,
+        );
     }
 
-    public function view(AuthUser $authUser): bool
+    /**
+     * المدير العام يرى جميع المستخدمين.
+     */
+    public function viewAny(User $authUser): bool
     {
-        return $authUser->can('View:User');
+        return $authUser->hasRole('super_admin')
+            || $authUser->can('ViewAny:User');
     }
 
-    public function create(AuthUser $authUser): bool
+    /**
+     * مشاهدة مستخدم محدد.
+     */
+    public function view(User $authUser, User $user): bool
     {
-        return $authUser->can('Create:User');
+        // حساب المدير العام لا يظهر للمستخدمين العاديين.
+        if ($user->hasRole('super_admin')) {
+            return $authUser->hasRole('super_admin');
+        }
+
+        if ($authUser->hasRole('super_admin')) {
+            return true;
+        }
+
+        return $authUser->can('View:User')
+            && $this->canAccessUser($authUser, $user);
     }
 
-    public function update(AuthUser $authUser): bool
+    /**
+     * إنشاء مستخدم.
+     */
+    public function create(User $authUser): bool
     {
-        return $authUser->can('Update:User');
+        return $authUser->hasRole('super_admin')
+            || $authUser->can('Create:User');
     }
 
-    public function delete(AuthUser $authUser): bool
+    /**
+     * تعديل مستخدم.
+     */
+    public function update(User $authUser, User $user): bool
     {
-        return $authUser->can('Delete:User');
+        // منع تعديل أي حساب يحمل دور المدير العام.
+        if ($user->hasRole('super_admin')) {
+            return false;
+        }
+
+        // منع تعديل الحساب الشخصي من هذا المورد.
+        if ($authUser->is($user)) {
+            return false;
+        }
+
+        if ($authUser->hasRole('super_admin')) {
+            return true;
+        }
+
+        return $authUser->can('Update:User')
+            && $this->canAccessUser($authUser, $user);
     }
 
-    public function deleteAny(AuthUser $authUser): bool
+    /**
+     * حذف مستخدم.
+     */
+    public function delete(User $authUser, User $user): bool
     {
-        return $authUser->can('DeleteAny:User');
+        // حماية حساب المدير العام.
+        if ($user->hasRole('super_admin')) {
+            return false;
+        }
+
+        // منع حذف الحساب الحالي.
+        if ($authUser->is($user)) {
+            return false;
+        }
+
+        if ($authUser->hasRole('super_admin')) {
+            return true;
+        }
+
+        return $authUser->can('Delete:User')
+            && $this->canAccessUser($authUser, $user);
     }
 
-    public function restore(AuthUser $authUser): bool
+    /**
+     * الحذف الجماعي.
+     *
+     * لا نسمح به حالياً؛ لأن كل سجل يحتاج فحصاً مستقلاً.
+     */
+    public function deleteAny(User $authUser): bool
     {
-        return $authUser->can('Restore:User');
+        return false;
     }
-
-    public function forceDelete(AuthUser $authUser): bool
-    {
-        return $authUser->can('ForceDelete:User');
-    }
-
-    public function forceDeleteAny(AuthUser $authUser): bool
-    {
-        return $authUser->can('ForceDeleteAny:User');
-    }
-
-    public function restoreAny(AuthUser $authUser): bool
-    {
-        return $authUser->can('RestoreAny:User');
-    }
-
-    public function replicate(AuthUser $authUser): bool
-    {
-        return $authUser->can('Replicate:User');
-    }
-
-    public function reorder(AuthUser $authUser): bool
-    {
-        return $authUser->can('Reorder:User');
-    }
-
 }

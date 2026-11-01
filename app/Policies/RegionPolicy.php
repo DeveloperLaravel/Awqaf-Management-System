@@ -4,72 +4,149 @@ declare(strict_types=1);
 
 namespace App\Policies;
 
-use Illuminate\Foundation\Auth\User as AuthUser;
+use App\Models\Center;
 use App\Models\Region;
-use Illuminate\Auth\Access\HandlesAuthorization;
+use App\Models\User;
 
 class RegionPolicy
 {
-    use HandlesAuthorization;
-    
-    public function viewAny(AuthUser $authUser): bool
+    /**
+     * الحصول على المنطقة الفعلية للمستخدم.
+     *
+     * المركز هو المصدر الأساسي إذا كان المستخدم مرتبطاً به.
+     */
+    private function getUserRegionId(User $user): ?int
     {
-        return $authUser->can('ViewAny:Region');
+        if ($user->center_id !== null) {
+            $regionId = Center::query()
+                ->whereKey($user->center_id)
+                ->value('region_id');
+
+            return $regionId !== null
+                ? (int) $regionId
+                : null;
+        }
+
+        return $user->region_id !== null
+            ? (int) $user->region_id
+            : null;
     }
 
-    public function view(AuthUser $authUser, Region $region): bool
-    {
-        return $authUser->can('View:Region');
+    /**
+     * التحقق من أن المنطقة ضمن نطاق المستخدم.
+     */
+    private function canAccessRegion(
+        User $user,
+        Region $region
+    ): bool {
+        if ($user->hasRole('super_admin')) {
+            return true;
+        }
+
+        $userRegionId = $this->getUserRegionId($user);
+
+        return $userRegionId !== null
+            && $userRegionId === (int) $region->getKey();
     }
 
-    public function create(AuthUser $authUser): bool
+    /**
+     * مشاهدة قائمة المناطق.
+     */
+    public function viewAny(User $user): bool
     {
-        return $authUser->can('Create:Region');
+        return $user->hasRole('super_admin')
+            || $user->hasPermissionTo('View:Region', 'web');
     }
 
-    public function update(AuthUser $authUser, Region $region): bool
+    /**
+     * مشاهدة منطقة محددة.
+     */
+    public function view(User $user, Region $region): bool
     {
-        return $authUser->can('Update:Region');
+        if (! $this->viewAny($user)) {
+            return false;
+        }
+
+        return $this->canAccessRegion($user, $region);
     }
 
-    public function delete(AuthUser $authUser, Region $region): bool
+    /**
+     * إنشاء منطقة.
+     */
+    public function create(User $user): bool
     {
-        return $authUser->can('Delete:Region');
+        return $user->hasRole('super_admin')
+            || $user->hasPermissionTo('Create:Region', 'web');
     }
 
-    public function deleteAny(AuthUser $authUser): bool
+    /**
+     * تعديل منطقة.
+     */
+    public function update(User $user, Region $region): bool
     {
-        return $authUser->can('DeleteAny:Region');
+        if (! $this->canAccessRegion($user, $region)) {
+            return false;
+        }
+
+        return $user->hasRole('super_admin')
+            || $user->hasPermissionTo('Update:Region', 'web');
     }
 
-    public function restore(AuthUser $authUser, Region $region): bool
+    /**
+     * حذف منطقة.
+     */
+    public function delete(User $user, Region $region): bool
     {
-        return $authUser->can('Restore:Region');
+        if (! $this->canAccessRegion($user, $region)) {
+            return false;
+        }
+            // لا نحذف منطقة مرتبطة بمراكز.
+    if ($region->centers()->exists()) {
+        return false;
     }
 
-    public function forceDelete(AuthUser $authUser, Region $region): bool
-    {
-        return $authUser->can('ForceDelete:Region');
+        return $user->hasRole('super_admin')
+            || $user->hasPermissionTo('regions.delete', 'web');
     }
 
-    public function forceDeleteAny(AuthUser $authUser): bool
+    /**
+     * تعطيل الحذف الجماعي.
+     */
+    public function deleteAny(User $user): bool
     {
-        return $authUser->can('ForceDeleteAny:Region');
+        return false;
     }
 
-    public function restoreAny(AuthUser $authUser): bool
+    /**
+     * العمليات المتقدمة غير المفعلة.
+     */
+    public function restore(User $user, Region $region): bool
     {
-        return $authUser->can('RestoreAny:Region');
+        return false;
     }
 
-    public function replicate(AuthUser $authUser, Region $region): bool
+    public function restoreAny(User $user): bool
     {
-        return $authUser->can('Replicate:Region');
+        return false;
     }
 
-    public function reorder(AuthUser $authUser): bool
+    public function forceDelete(User $user, Region $region): bool
     {
-        return $authUser->can('Reorder:Region');
+        return false;
     }
 
+    public function forceDeleteAny(User $user): bool
+    {
+        return false;
+    }
+
+    public function replicate(User $user, Region $region): bool
+    {
+        return false;
+    }
+
+    public function reorder(User $user): bool
+    {
+        return false;
+    }
 }

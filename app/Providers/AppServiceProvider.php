@@ -8,6 +8,7 @@ use App\Models\AttendanceRecord;
 use App\Models\Center;
 use App\Models\Circle;
 use App\Models\Guardian;
+use App\Models\Region;
 use App\Models\Student;
 use App\Models\Teacher;
 use App\Models\User;
@@ -15,14 +16,18 @@ use App\Models\User;
 use App\Policies\AttendanceRecordPolicy;
 use App\Policies\CirclePolicy;
 use App\Policies\GuardianPolicy;
+use App\Policies\RegionPolicy;
 use App\Policies\StudentPolicy;
 use App\Policies\TeacherPolicy;
 use App\Policies\UserPolicy;
 
 use App\Services\CenterHierarchy;
-
+use App\Policies\RolePolicy;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
+use Spatie\Permission\Models\Role;
+use App\Policies\CenterPolicy;
+
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -33,38 +38,53 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+
+    
         /*
          * تسجيل السياسات.
          */
-        Gate::policy(
-            AttendanceRecord::class,
-            AttendanceRecordPolicy::class,
-        );
 
-        Gate::policy(
-            Guardian::class,
-            GuardianPolicy::class,
-        );
+Gate::policy(AttendanceRecord::class, AttendanceRecordPolicy::class);
+Gate::policy(Guardian::class, GuardianPolicy::class);
+Gate::policy(Student::class, StudentPolicy::class);
+Gate::policy(Circle::class, CirclePolicy::class);
+Gate::policy(Teacher::class, TeacherPolicy::class);
 
-        Gate::policy(
-            Student::class,
-            StudentPolicy::class,
-        );
 
-        Gate::policy(
-            Circle::class,
-            CirclePolicy::class,
-        );
+Gate::policy(Center::class, CenterPolicy::class);
+Gate::policy(User::class, UserPolicy::class);
+Gate::policy(Region::class, RegionPolicy::class);
+Gate::policy(Role::class, RolePolicy::class);
+/*
+ * صلاحيات المناطق.
+ */
+Gate::define(
+    'regions.view',
+    fn (User $user): bool =>
+        $user->hasRole('super_admin')
+        || $user->hasPermissionTo('regions.view', 'web'),
+);
 
-        Gate::policy(
-            Teacher::class,
-            TeacherPolicy::class,
-        );
+Gate::define(
+    'regions.create',
+    fn (User $user): bool =>
+        $user->hasRole('super_admin')
+        || $user->hasPermissionTo('regions.create', 'web'),
+);
 
-        Gate::policy(
-            User::class,
-            UserPolicy::class,
-        );
+Gate::define(
+    'regions.update',
+    fn (User $user): bool =>
+        $user->hasRole('super_admin')
+        || $user->hasPermissionTo('regions.update', 'web'),
+);
+
+Gate::define(
+    'regions.delete',
+    fn (User $user): bool =>
+        $user->hasRole('super_admin')
+        || $user->hasPermissionTo('regions.delete', 'web'),
+);
 
         /*
          * صلاحيات الحلقات.
@@ -148,20 +168,27 @@ class AppServiceProvider extends ServiceProvider
                 $user->hasPermissionTo('centers.view_all', 'web'),
         );
 
-        Gate::define(
-            'centers.create',
-            fn (User $user): bool =>
-                $user->hasPermissionTo('centers.create', 'web'),
-        );
+      Gate::define(
+    'centers.create',
+    fn (User $user): bool =>
+        (
+            $user->hasRole('super_admin')
+            && (
+                $user->hasPermissionTo('Create:Center', 'web')
+                || $user->hasPermissionTo('centers.create', 'web')
+            )
+        )
+        || $user->hasPermissionTo('centers.create', 'web'),
+);
 
-        Gate::define(
-            'centers.create_child',
-            fn (User $user): bool =>
-                $user->hasPermissionTo('centers.create_child', 'web')
-                && app(CenterHierarchy::class)
-                    ->directlyManagedCenters($user)
-                    ->exists(),
-        );
+    Gate::define(
+    'centers.create_child',
+    fn (User $user): bool =>
+        $user->hasPermissionTo('centers.create_child', 'web')
+        && app(CenterHierarchy::class)
+            ->directlyManagedCenters($user)
+            ->isNotEmpty(),
+);
 
         Gate::define(
             'centers.update',
@@ -263,35 +290,9 @@ class AppServiceProvider extends ServiceProvider
          * توافق مع أسماء صلاحيات المستخدمين القديمة.
          * تُستخدم في الملفات التي تستدعي Gate::allows('users.*').
          */
-        Gate::define(
-            'users.view_all',
-            fn (User $user): bool =>
-                $user->hasPermissionTo('users.view_all', 'web'),
-        );
-
-        Gate::define(
-            'users.view',
-            fn (User $user): bool =>
-                $user->hasPermissionTo('users.view', 'web'),
-        );
-
-        Gate::define(
-            'users.create',
-            fn (User $user): bool =>
-                $user->hasPermissionTo('users.create', 'web'),
-        );
-
-        Gate::define(
-            'users.update',
-            fn (User $user): bool =>
-                $user->hasPermissionTo('users.update', 'web'),
-        );
-
-        Gate::define(
-            'users.delete',
-            fn (User $user): bool =>
-                $user->hasPermissionTo('users.delete', 'web'),
-        );
+ 
+    
+    
 
         /*
          * اسم قديم للاعتماد النهائي، إن كانت ملفات أخرى تستخدمه.
@@ -301,5 +302,6 @@ class AppServiceProvider extends ServiceProvider
             fn (User $user): bool =>
                 $user->hasRole('super_admin'),
         );
+     
     }
 }

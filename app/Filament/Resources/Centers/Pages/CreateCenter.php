@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Spatie\Permission\Models\Role;
+use Illuminate\Support\Facades\Gate;
 
 class CreateCenter extends CreateRecord
 {
@@ -49,26 +50,14 @@ class CreateCenter extends CreateRecord
      * بقية المستخدمين يستطيعون إنشاء مركز فرعي فقط،
      * بشرط امتلاك صلاحية Create:Center ووجود مركز مرتبط بهم.
      */
-    protected function authorizeCenterCreation(User $user): void
-    {
-        abort_unless(
-            $user->hasPermissionTo('Create:Center', 'web'),
-            403,
-            'ليس لديك صلاحية إنشاء المراكز.',
-        );
-
-        if ($user->hasRole('super_admin')) {
-            return;
-        }
-
-        $hasManagedCenters = $user->managedCenters()->exists();
-
-        abort_unless(
-            $user->center_id !== null || $hasManagedCenters,
-            403,
-            'يجب ربط المستخدم بمركز قبل إنشاء مركز فرعي.',
-        );
-    }
+ protected function authorizeCenterCreation(User $user): void
+{
+    abort_unless(
+        Gate::forUser($user)->allows('create', Center::class),
+        403,
+        'ليس لديك صلاحية إنشاء مركز أو فرع.',
+    );
+}
 
     /**
      * تجهيز بيانات النموذج قبل الحفظ.
@@ -204,6 +193,8 @@ class CreateCenter extends CreateRecord
 
                 $data['rejection_reason'] = null;
             } else {
+                   $manager = $user;
+    $roleName = 'center_admin';
                 /*
                  * الحالة الثانية: إنشاء مركز فرعي.
                  */
