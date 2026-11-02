@@ -6,9 +6,23 @@ namespace App\Policies;
 
 use App\Models\Circle;
 use App\Models\User;
+use App\Services\CenterHierarchy;
 
 class CirclePolicy
 {
+    /**
+     * التحقق من امتلاك إحدى الصلاحيات.
+     */
+ private function hasAnyPermission(
+    User $user,
+    array $permissions
+): bool {
+    $grantedPermissions = $user->getAllPermissions()
+        ->where('guard_name', 'web')
+        ->pluck('name');
+
+    return $grantedPermissions->intersect($permissions)->isNotEmpty();
+}
     /**
      * عرض قائمة الحلقات.
      */
@@ -19,14 +33,17 @@ class CirclePolicy
         }
 
         if ($user->hasRole('center_manager')) {
-            return filled($user->center_id)
-                && $user->hasPermissionTo('circles.view', 'web');
+            return $this->hasAnyPermission($user, [
+                'circles.view',
+                'ViewAny:Circle',
+            ]);
         }
 
         if ($user->hasRole('teacher')) {
-            return $user->hasAnyPermission([
+            return $this->hasAnyPermission($user, [
                 'circles.view',
                 'circles.view_own',
+                'ViewAny:Circle',
             ]);
         }
 
@@ -47,13 +64,23 @@ class CirclePolicy
         }
 
         if ($user->hasRole('center_manager')) {
-            return $user->hasPermissionTo('circles.view', 'web');
+            return $this->hasAnyPermission($user, [
+                'circles.view',
+                'View:Circle',
+                'ViewAny:Circle',
+            ]);
         }
 
-        return $user->hasAnyPermission([
-            'circles.view',
-            'circles.view_own',
-        ]);
+        if ($user->hasRole('teacher')) {
+            return $this->hasAnyPermission($user, [
+                'circles.view',
+                'circles.view_own',
+                'View:Circle',
+                'ViewAny:Circle',
+            ]);
+        }
+
+        return false;
     }
 
     /**
@@ -65,9 +92,15 @@ class CirclePolicy
             return true;
         }
 
-        return $user->hasRole('center_manager')
-            && filled($user->center_id)
-            && $user->hasPermissionTo('circles.create', 'web');
+        $centerIds = app(CenterHierarchy::class)
+        ->accessibleIdsForUser($user);
+
+    return $user->hasRole('center_manager')
+        && collect($centerIds)->isNotEmpty()
+        && $this->hasAnyPermission($user, [
+            'circles.create',
+            'Create:Circle',
+        ]);
     }
 
     /**
@@ -84,7 +117,10 @@ class CirclePolicy
         }
 
         return $user->hasRole('center_manager')
-            && $user->hasPermissionTo('circles.update', 'web');
+            && $this->hasAnyPermission($user, [
+                'circles.update',
+                'Update:Circle',
+            ]);
     }
 
     /**
@@ -101,7 +137,10 @@ class CirclePolicy
         }
 
         return $user->hasRole('center_manager')
-            && $user->hasPermissionTo('circles.delete', 'web');
+            && $this->hasAnyPermission($user, [
+                'circles.delete',
+                'Delete:Circle',
+            ]);
     }
 
     /**
@@ -109,16 +148,19 @@ class CirclePolicy
      */
     public function deleteAny(User $user): bool
     {
-        return $user->hasRole('super_admin')
-            || (
-                $user->hasRole('center_manager')
-                && filled($user->center_id)
-                && $user->hasPermissionTo('circles.delete', 'web')
-            );
+        if ($user->hasRole('super_admin')) {
+            return true;
+        }
+
+        return $user->hasRole('center_manager')
+            && $this->hasAnyPermission($user, [
+                'circles.delete',
+                'Delete:Circle',
+            ]);
     }
 
     /**
-     * التحقق من أن الحلقة ضمن نطاق المستخدم.
+     * التحقق من نطاق وصول المستخدم للحلقة.
      */
     private function canAccessCircle(
         User $user,
@@ -129,8 +171,10 @@ class CirclePolicy
         }
 
         if ($user->hasRole('center_manager')) {
-            return filled($user->center_id)
-                && (int) $circle->center_id === (int) $user->center_id;
+            return app(CenterHierarchy::class)->canUserAccess(
+                $user,
+                (int) $circle->center_id
+            );
         }
 
         if ($user->hasRole('teacher')) {

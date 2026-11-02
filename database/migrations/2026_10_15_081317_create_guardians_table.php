@@ -15,18 +15,34 @@ return new class extends Migration
             $table->id();
               $table->foreignId('center_id')
         ->constrained('centers')
-        ->cascadeOnDelete();
+        ->restrictOnDelete();
 
     $table->string('full_name');
-    $table->string('phone');
+    $table->string('phone',30)->nullable();
     $table->string('email')->nullable();
+    $table->string('national_id', 30)->nullable();
+    $table->string('occupation')->nullable();
     $table->text('address')->nullable();
-    $table->string('relationship')->nullable();
     $table->boolean('is_active')->default(true);
 
+            $table->text('notes')->nullable();
+
             $table->timestamps();
+
+            $table->unique(
+                ['center_id', 'phone'],
+                'guardians_center_phone_unique'
+            );
                $table->index(['center_id', 'full_name']);
+            $table->index(['center_id', 'is_active']);
         });
+          // منع تكرار الرقم الوطني داخل المركز.
+        DB::statement("
+            CREATE UNIQUE INDEX guardians_center_national_id_unique
+            ON guardians (center_id, national_id)
+            WHERE national_id IS NOT NULL
+        ");
+
     }
 
     /**

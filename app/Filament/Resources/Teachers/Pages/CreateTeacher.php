@@ -6,7 +6,6 @@ namespace App\Filament\Resources\Teachers\Pages;
 
 use App\Filament\Resources\Teachers\TeacherResource;
 use Filament\Resources\Pages\CreateRecord;
-use Illuminate\Support\Facades\Auth;
 
 class CreateTeacher extends CreateRecord
 {
@@ -14,12 +13,12 @@ class CreateTeacher extends CreateRecord
 
     protected function mutateFormDataBeforeCreate(array $data): array
     {
-        $user = Auth::user();
+        if (empty($data['center_id'])) {
+            abort(422, 'يجب اختيار مركز واحد على الأقل.');
+        }
 
-        abort_if($user === null, 403);
+        $data['center_id'] = (int) $data['center_id'];
 
-        // لا نفرض center_id هنا؛ ربط المعلم بالمركز يتم
-        // من خلال علاقة centers في النموذج.
         return $data;
     }
 }

@@ -106,7 +106,7 @@ class RegionPolicy
     }
 
         return $user->hasRole('super_admin')
-            || $user->hasPermissionTo('regions.delete', 'web');
+            || $user->hasPermissionTo('Delete:Region', 'web');
     }
 
     /**

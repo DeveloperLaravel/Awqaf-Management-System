@@ -7,74 +7,48 @@ namespace App\Filament\Resources\Centers\Tables;
 use App\Models\Center;
 use App\Models\User;
 use Filament\Actions\Action;
+use Filament\Forms\Components\Textarea;
+use Filament\Notifications\Notification;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Filament\Tables\Table;
-use Filament\Forms\Components\Textarea;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Validation\ValidationException;
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Collection;
-
 
 class CentersTable
 {
-/**
- * إنشاء مسار هرمي للمركز من الجذر إلى المركز الحالي.
- */
-protected static function getCenterHierarchyLabel(Center $record): string
-{
-    $names = [];
-    $current = $record;
-    $visited = [];
-
-    while ($current !== null) {
-        // منع الدوران إذا وجدت علاقة أبوية غير صحيحة.
-        if (in_array($current->getKey(), $visited, true)) {
-            break;
-        }
-
-        $visited[] = $current->getKey();
-
-        array_unshift($names, $current->name);
-
-        $current = $current->parentCenter;
-    }
-
-    return implode(' ← ', $names);
-}
-
     public static function configure(Table $table): Table
     {
         return $table
             ->columns([
-               TextColumn::make('name')
-    ->label('المركز والفروع')
-    ->searchable()
-    ->sortable()
-    ->description(function (Center $record): string {
-        $level = 0;
-        $parent = $record->parentCenter;
-        $visited = [$record->getKey()];
+                TextColumn::make('name')
+                    ->label('المركز والفروع')
+                    ->searchable()
+                    ->sortable()
+                    ->description(function (Center $record): string {
+                        $level = 0;
+                        $parent = $record->parentCenter;
+                        $visited = [$record->getKey()];
 
-        while ($parent !== null) {
-            if (in_array($parent->getKey(), $visited, true)) {
-                break;
-            }
+                        while ($parent !== null) {
+                            if (in_array($parent->getKey(), $visited, true)) {
+                                break;
+                            }
 
-            $visited[] = $parent->getKey();
-            $level++;
-            $parent = $parent->parentCenter;
-        }
+                            $visited[] = $parent->getKey();
+                            $level++;
+                            $parent = $parent->parentCenter;
+                        }
 
-        $prefix = $level === 0
-            ? 'مركز رئيسي'
-            : '└─ فرع من: ' . ($record->parentCenter?->name ?? 'غير معروف');
+                        $prefix = $level === 0
+                            ? 'مركز رئيسي'
+                            : '└─ فرع من: ' . ($record->parentCenter?->name ?? 'غير معروف');
 
-        return $prefix . ' | ' . ($record->code ?: 'بدون رمز');
-    }),
+                        return $prefix . ' | ' . ($record->code ?: 'بدون رمز');
+                    }),
+
                 TextColumn::make('region.name')
                     ->label('المنطقة')
                     ->placeholder('غير محددة')
@@ -97,27 +71,27 @@ protected static function getCenterHierarchyLabel(Center $record): string
                     ->toggleable(),
 
                 TextColumn::make('approval_status')
-    ->label('حالة الاعتماد')
-    ->badge()
-    ->formatStateUsing(
-        fn (?string $state): string => match ($state) {
-            'pending_parent_approval' => 'بانتظار موافقة المركز الأب',
-            'pending_super_admin_approval' => 'بانتظار الاعتماد النهائي',
-            'active' => 'معتمد',
-            'rejected' => 'مرفوض',
-            default => 'غير محدد',
-        }
-    )
-    ->color(
-        fn (?string $state): string => match ($state) {
-            'active' => 'success',
-            'pending_parent_approval',
-            'pending_super_admin_approval' => 'warning',
-            'rejected' => 'danger',
-            default => 'gray',
-        }
-    )
-    ->sortable(),
+                    ->label('حالة الاعتماد')
+                    ->badge()
+                    ->formatStateUsing(
+                        fn (?string $state): string => match ($state) {
+                            'pending_parent_approval' => 'بانتظار موافقة المركز الأب',
+                            'pending_super_admin_approval' => 'بانتظار الاعتماد النهائي',
+                            'active' => 'معتمد',
+                            'rejected' => 'مرفوض',
+                            default => 'غير محدد',
+                        }
+                    )
+                    ->color(
+                        fn (?string $state): string => match ($state) {
+                            'active' => 'success',
+                            'pending_parent_approval',
+                            'pending_super_admin_approval' => 'warning',
+                            'rejected' => 'danger',
+                            default => 'gray',
+                        }
+                    )
+                    ->sortable(),
 
                 IconColumn::make('is_active')
                     ->label('مفعّل')
@@ -134,14 +108,9 @@ protected static function getCenterHierarchyLabel(Center $record): string
                 SelectFilter::make('approval_status')
                     ->label('حالة الاعتماد')
                     ->options([
-                        'pending_parent_approval' =>
-                            'بانتظار موافقة المركز الأب',
-
-                        'pending_super_admin_approval' =>
-                            'بانتظار الاعتماد النهائي',
-
+                        'pending_parent_approval' => 'بانتظار موافقة المركز الأب',
+                        'pending_super_admin_approval' => 'بانتظار الاعتماد النهائي',
                         'active' => 'معتمد',
-
                         'rejected' => 'مرفوض',
                     ]),
 
@@ -162,6 +131,9 @@ protected static function getCenterHierarchyLabel(Center $record): string
 
     /**
      * موافقة مدير المركز الأب.
+     *
+     * تنقل المركز إلى انتظار الاعتماد النهائي فقط،
+     * ولا تقوم بتفعيله.
      */
     protected static function parentApprovalAction(): Action
     {
@@ -172,26 +144,18 @@ protected static function getCenterHierarchyLabel(Center $record): string
             ->requiresConfirmation()
             ->modalHeading('الموافقة على المركز الفرعي')
             ->modalDescription(
-                'ستُنقل حالة المركز إلى مرحلة الاعتماد النهائي، ولن يُفعّل بعد.'
+                'ستُنقل حالة المركز إلى مرحلة الاعتماد النهائي، ولن يتم تفعيله بعد.'
             )
             ->visible(function (Center $record): bool {
-                $user = request()->user();
+                $user = auth()->user();
 
                 return $user instanceof User
-                    && $record->approval_status === 'pending_parent_approval'
-                    && $record->parent_center_id !== null
-                    && Gate::forUser($user)->allows('centers.approve_child')
-                    && self::managesParent($user, $record);
+                    && Gate::forUser($user)->allows('approveChild', $record);
             })
             ->action(function (Center $record): void {
-                $user = request()->user();
+                $user = auth()->user();
 
                 abort_unless($user instanceof User, 403);
-
-                abort_unless(
-                    Gate::forUser($user)->allows('centers.approve_child'),
-                    403,
-                );
 
                 DB::transaction(function () use ($record, $user): void {
                     $center = Center::query()
@@ -199,21 +163,8 @@ protected static function getCenterHierarchyLabel(Center $record): string
                         ->lockForUpdate()
                         ->firstOrFail();
 
-                    if (
-                        $center->approval_status !== 'pending_parent_approval'
-                        || $center->parent_center_id === null
-                    ) {
-                        throw ValidationException::withMessages([
-                            'approval_status' =>
-                                'لم تعد حالة المركز تسمح بهذه الموافقة.',
-                        ]);
-                    }
-
-                    abort_unless(
-                        self::managesParent($user, $center),
-                        403,
-                        'لا يمكنك اعتماد مركز لا تدير مركزه الأب مباشرة.',
-                    );
+                    // إعادة التحقق من الصلاحية بعد قفل السجل.
+                    Gate::forUser($user)->authorize('approveChild', $center);
 
                     $parent = Center::query()
                         ->whereKey($center->parent_center_id)
@@ -227,8 +178,7 @@ protected static function getCenterHierarchyLabel(Center $record): string
                         || $parent->approved_at === null
                     ) {
                         throw ValidationException::withMessages([
-                            'parent_center_id' =>
-                                'المركز الأب غير معتمد أو غير مفعّل.',
+                            'parent_center_id' => 'المركز الأب غير معتمد أو غير مفعّل.',
                         ]);
                     }
 
@@ -242,11 +192,17 @@ protected static function getCenterHierarchyLabel(Center $record): string
                         'rejection_reason' => null,
                     ])->save();
                 });
+
+                Notification::make()
+                    ->title('تمت موافقة المركز الأب')
+                    ->body('أصبح الطلب بانتظار الاعتماد النهائي من المدير العام.')
+                    ->success()
+                    ->send();
             });
     }
 
     /**
-     * رفض المركز من مدير المركز الأب.
+     * رفض طلب المركز من مدير المركز الأب.
      */
     protected static function parentRejectionAction(): Action
     {
@@ -264,51 +220,24 @@ protected static function getCenterHierarchyLabel(Center $record): string
                     ->maxLength(2000),
             ])
             ->visible(function (Center $record): bool {
-                $user = request()->user();
+                $user = auth()->user();
 
                 return $user instanceof User
-                    && $record->approval_status === 'pending_parent_approval'
-                    && $record->parent_center_id !== null
-                    && Gate::forUser($user)->allows('centers.approve_child')
-                    && self::managesParent($user, $record);
+                    && Gate::forUser($user)->allows('approveChild', $record);
             })
-            ->action(function (
-                Center $record,
-                array $data,
-            ): void {
-                $user = request()->user();
+            ->action(function (Center $record, array $data): void {
+                $user = auth()->user();
 
                 abort_unless($user instanceof User, 403);
 
-                abort_unless(
-                    Gate::forUser($user)->allows('centers.approve_child'),
-                    403,
-                );
-
-                DB::transaction(function () use (
-                    $record,
-                    $data,
-                    $user,
-                ): void {
+                DB::transaction(function () use ($record, $data, $user): void {
                     $center = Center::query()
                         ->whereKey($record->getKey())
                         ->lockForUpdate()
                         ->firstOrFail();
 
-                    if (
-                        $center->approval_status !== 'pending_parent_approval'
-                        || $center->parent_center_id === null
-                    ) {
-                        throw ValidationException::withMessages([
-                            'approval_status' =>
-                                'لم تعد حالة المركز تسمح بالرفض من هذه المرحلة.',
-                        ]);
-                    }
-
-                    abort_unless(
-                        self::managesParent($user, $center),
-                        403,
-                    );
+                    // إعادة التحقق من الصلاحية وحالة الطلب.
+                    Gate::forUser($user)->authorize('approveChild', $center);
 
                     $center->forceFill([
                         'approval_status' => 'rejected',
@@ -320,11 +249,19 @@ protected static function getCenterHierarchyLabel(Center $record): string
                         'rejection_reason' => $data['rejection_reason'],
                     ])->save();
                 });
+
+                Notification::make()
+                    ->title('تم رفض طلب المركز')
+                    ->body('تم حفظ سبب الرفض.')
+                    ->danger()
+                    ->send();
             });
     }
 
     /**
-     * الاعتماد النهائي بواسطة المدير العام.
+     * الاعتماد النهائي من المدير العام.
+     *
+     * لا يظهر الزر إلا بعد موافقة المركز الأب.
      */
     protected static function finalApprovalAction(): Action
     {
@@ -335,27 +272,18 @@ protected static function getCenterHierarchyLabel(Center $record): string
             ->requiresConfirmation()
             ->modalHeading('الاعتماد النهائي للمركز')
             ->modalDescription(
-                'سيتم اعتماد المركز وتفعيله في المنظومة.'
+                'سيتم اعتماد المركز وتفعيله بعد موافقة المركز الأب.'
             )
             ->visible(function (Center $record): bool {
-                $user = request()->user();
+                $user = auth()->user();
 
                 return $user instanceof User
-                    && $user->hasRole('super_admin')
-                    && $record->approval_status === 'pending_super_admin_approval'
-                    && $record->parent_approved_at !== null
-                    && Gate::forUser($user)->allows('centers.approve_final');
+                    && Gate::forUser($user)->allows('approveFinal', $record);
             })
             ->action(function (Center $record): void {
-                $user = request()->user();
+                $user = auth()->user();
 
                 abort_unless($user instanceof User, 403);
-
-                abort_unless(
-                    $user->hasRole('super_admin')
-                    && Gate::forUser($user)->allows('centers.approve_final'),
-                    403,
-                );
 
                 DB::transaction(function () use ($record, $user): void {
                     $center = Center::query()
@@ -363,15 +291,8 @@ protected static function getCenterHierarchyLabel(Center $record): string
                         ->lockForUpdate()
                         ->firstOrFail();
 
-                    if (
-                        $center->approval_status !== 'pending_super_admin_approval'
-                        || $center->parent_approved_at === null
-                    ) {
-                        throw ValidationException::withMessages([
-                            'approval_status' =>
-                                'يجب موافقة المركز الأب أولًا قبل الاعتماد النهائي.',
-                        ]);
-                    }
+                    // التحقق من سياسة الاعتماد النهائي.
+                    Gate::forUser($user)->authorize('approveFinal', $center);
 
                     $parent = Center::query()
                         ->whereKey($center->parent_center_id)
@@ -385,8 +306,13 @@ protected static function getCenterHierarchyLabel(Center $record): string
                         || $parent->approved_at === null
                     ) {
                         throw ValidationException::withMessages([
-                            'parent_center_id' =>
-                                'لا يمكن اعتماد المركز لأن المركز الأب غير معتمد أو غير مفعّل.',
+                            'parent_center_id' => 'المركز الأب غير معتمد أو غير مفعّل.',
+                        ]);
+                    }
+
+                    if ($center->parent_approved_at === null) {
+                        throw ValidationException::withMessages([
+                            'approval_status' => 'يجب موافقة المركز الأب أولاً.',
                         ]);
                     }
 
@@ -398,31 +324,12 @@ protected static function getCenterHierarchyLabel(Center $record): string
                         'rejection_reason' => null,
                     ])->save();
                 });
+
+                Notification::make()
+                    ->title('تم اعتماد المركز بنجاح')
+                    ->body('أصبح المركز معتمداً ومفعّلاً في النظام.')
+                    ->success()
+                    ->send();
             });
-    }
-
-    /**
-     * يتحقق من أن المستخدم يدير المركز الأب مباشرة.
-     *
-     * المركز الأب فقط هو الذي يمنح حق الموافقة في هذه المرحلة.
-     */
-    protected static function managesParent(
-        User $user,
-        Center $center,
-    ): bool {
-        if ($center->parent_center_id === null) {
-            return false;
-        }
-
-        if (
-            $user->center_id !== null
-            && (int) $user->center_id === (int) $center->parent_center_id
-        ) {
-            return true;
-        }
-
-        return $user->managedCenters()
-            ->where('centers.id', $center->parent_center_id)
-            ->exists();
     }
 }

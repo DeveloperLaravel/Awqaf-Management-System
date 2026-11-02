@@ -6,10 +6,10 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
-
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 class Guardian extends Model
 {
-    use HasFactory;
+    use HasFactory ;
 
     protected $fillable = [
         'center_id',
@@ -39,8 +39,19 @@ class Guardian extends Model
     /**
      * الطلبة المرتبطون بولي الأمر.
      */
-    public function students(): HasMany
-    {
-        return $this->hasMany(Student::class);
-    }
+
+public function students(): BelongsToMany
+{
+    return $this->belongsToMany(
+        Student::class,
+        'guardian_student'
+    )
+        ->withPivot([
+            'relationship',
+            'is_primary',
+            'can_receive_notifications',
+            'can_pickup',
+        ])
+        ->withTimestamps();
+}
 }

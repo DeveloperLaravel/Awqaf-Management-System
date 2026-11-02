@@ -15,7 +15,7 @@ return new class extends Migration
             $table->id();
              $table->foreignId('center_id')
         ->constrained('centers')
-        ->cascadeOnDelete();
+        ->restrictOnDelete();
 
     $table->foreignId('teacher_id')
         ->nullable()
@@ -29,12 +29,39 @@ return new class extends Migration
     $table->unsignedSmallInteger('capacity')->default(20);
     $table->time('starts_at')->nullable();
     $table->time('ends_at')->nullable();
-    $table->string('days')->nullable();
+    $table->json('days')->nullable();
     $table->boolean('is_active')->default(true);
+     $table->text('description')->nullable();
+   
 
             $table->timestamps();
-             $table->unique(['center_id', 'code']);
+               $table->unique(
+                ['center_id', 'code'],
+                'circles_center_code_unique'
+            );
+            $table->unique(
+    ['id', 'center_id'],
+    'circles_id_center_unique'
+);
+            $table->index(['center_id', 'is_active']);
+            $table->index(['center_id', 'teacher_id']);
         });
+
+         // التأكد من أن الطاقة الاستيعابية أكبر من صفر.
+        DB::statement("
+            ALTER TABLE circles
+            ADD CONSTRAINT circles_capacity_positive
+            CHECK (capacity > 0)
+        ");
+         DB::statement("
+            ALTER TABLE circles
+            ADD CONSTRAINT circles_valid_schedule
+            CHECK (
+                starts_at IS NULL
+                OR ends_at IS NULL
+                OR starts_at < ends_at
+            )
+        ");
     }
 
     /**

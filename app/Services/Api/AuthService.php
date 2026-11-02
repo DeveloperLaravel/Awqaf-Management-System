@@ -1,12 +1,13 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Services\Api;
 
 use App\Models\Center;
 use App\Models\User;
 use App\Services\CenterHierarchy;
 use Illuminate\Support\Facades\Hash;
-use Laravel\Sanctum\NewAccessToken;
 
 class AuthService
 {
@@ -49,6 +50,11 @@ class AuthService
      */
     public function userData(User $user): array
     {
+        $user->loadMissing([
+            'center',
+            'region',
+        ]);
+
         $accessibleIds = $this->centerHierarchy
             ->accessibleIdsForUser($user);
 
@@ -57,10 +63,11 @@ class AuthService
             ->whereIn('id', $accessibleIds)
             ->orderBy('name')
             ->get()
-            ->map(fn (Center $center) => [
+            ->map(fn (Center $center): array => [
                 'id' => $center->id,
                 'name' => $center->name,
                 'code' => $center->code,
+
                 'region_id' => $center->region_id,
 
                 'region' => $center->region ? [
@@ -71,7 +78,11 @@ class AuthService
                 'phone' => $center->phone,
                 'email' => $center->email,
                 'address' => $center->address,
-                'is_active' => $center->is_active,
+
+                'is_active' => (bool) $center->is_active,
+
+                'parent_center_id' => $center->parent_center_id,
+                'approval_status' => $center->approval_status,
             ])
             ->values()
             ->all();

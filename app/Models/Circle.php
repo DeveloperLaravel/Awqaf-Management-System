@@ -31,20 +31,40 @@ class Circle extends Model
         
     }
 
+
+       /**
+     * المركز التابع له الحلقة.
+     */
     public function center(): BelongsTo
     {
         return $this->belongsTo(Center::class);
     }
+      /**
+     * المعلم المسؤول عن الحلقة.
+     */
 
     public function teacher(): BelongsTo
     {
         return $this->belongsTo(Teacher::class);
     }
 
-    public function students(): BelongsToMany
+      /**
+     * الطلاب المسجلون في الحلقة.
+     */
+
+     public function students(): BelongsToMany
     {
-        return $this->belongsToMany(Student::class)
-            ->withPivot('joined_at', 'left_at')
+        return $this->belongsToMany(
+            Student::class,
+            'circle_student',
+            'circle_id',
+            'student_id',
+        )
+    //      return $this->belongsToMany(
+    //     Student::class,
+    //     'circle_student'
+    // )
+            ->withPivot(['joined_at', 'left_at'])
             ->withTimestamps();
     }
 }

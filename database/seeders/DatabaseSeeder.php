@@ -19,12 +19,6 @@ class DatabaseSeeder extends Seeder
 
         $this->call([
             RolesAndPermissionsSeeder::class,
-            GuardianSeeder::class,
-            TeacherSeeder::class,
-            CircleSeeder::class,
-            StudentSeeder::class,
-            AttendanceRecordSeeder::class,
-            CreateCenterAdminAccountsSeeder::class,
         ]);
     }
 }

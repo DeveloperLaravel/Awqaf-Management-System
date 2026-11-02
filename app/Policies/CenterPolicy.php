@@ -14,8 +14,7 @@ class CenterPolicy
     {
         return $user->hasRole('super_admin')
             || $user->hasPermissionTo('ViewAny:Center', 'web')
-            || $user->hasPermissionTo('centers.view', 'web')
-            || $user->hasPermissionTo('centers.view_all', 'web');
+            || $user->hasPermissionTo('ViewAll:Center', 'web');
     }
 
     public function view(User $user, Center $center): bool
@@ -24,12 +23,10 @@ class CenterPolicy
             return true;
         }
 
-        $hasPermission =
-            $user->hasPermissionTo('View:Center', 'web')
-            || $user->hasPermissionTo('centers.view', 'web')
-            || $user->hasPermissionTo('centers.view_all', 'web');
-
-        if (! $hasPermission) {
+        if (
+            ! $user->hasPermissionTo('View:Center', 'web')
+            && ! $user->hasPermissionTo('ViewAny:Center', 'web')
+        ) {
             return false;
         }
 
@@ -40,49 +37,45 @@ class CenterPolicy
     }
 
     /**
-     * المدير العام ينشئ المراكز الرئيسية والفروع.
-     * مدير المركز ينشئ الفروع فقط.
+     * إنشاء مركز رئيسي أو فرع.
      */
     public function create(User $user): bool
     {
-        // المدير العام ينشئ المراكز الرئيسية
-    if ($user->hasRole('super_admin')) {
-        return $user->hasPermissionTo('Create:Center', 'web')
-            || $user->hasPermissionTo('centers.create', 'web');
+        if ($user->hasRole('super_admin')) {
+            return $user->hasPermissionTo('Create:Center', 'web');
+        }
+
+        return $user->hasPermissionTo('CreateChild:Center', 'web')
+            && app(CenterHierarchy::class)
+                ->directlyManagedCenters($user)
+                ->isNotEmpty();
     }
 
-         // مدير المركز أو الفرع ينشئ فرعاً تحت مركز يديره مباشرة
-    return $user->hasPermissionTo('centers.create_child', 'web')
-        && app(CenterHierarchy::class)
-            ->directlyManagedCenters($user)
-            ->isNotEmpty();
-    }
-
+    /**
+     * تعديل مركز ضمن النطاق المسموح.
+     */
     public function update(User $user, Center $center): bool
     {
         if (! $this->canAccess($user, $center)) {
             return false;
         }
 
-        return $user->hasPermissionTo('Update:Center', 'web')
-            || $user->hasPermissionTo('centers.update', 'web');
+        return $user->hasPermissionTo('Update:Center', 'web');
     }
 
+    /**
+     * حذف مركز لا يحتوي على فروع.
+     */
     public function delete(User $user, Center $center): bool
     {
         if (! $this->canAccess($user, $center)) {
             return false;
         }
 
-        $hasPermission =
-            $user->hasPermissionTo('Delete:Center', 'web')
-            || $user->hasPermissionTo('centers.delete', 'web');
-
-        if (! $hasPermission) {
+        if (! $user->hasPermissionTo('Delete:Center', 'web')) {
             return false;
         }
 
-        // منع حذف مركز لديه فروع.
         return ! $center->childCenters()->exists();
     }
 
@@ -121,6 +114,46 @@ class CenterPolicy
         return false;
     }
 
+    /**
+ * موافقة مدير المركز الأب على إنشاء فرع جديد.
+ */
+/**
+ * موافقة مدير المركز الأب على إنشاء فرع جديد.
+ */
+/**
+ * موافقة مدير المركز الأب على إنشاء فرع جديد.
+ */
+public function approveChild(User $user, Center $center): bool
+{
+    if (
+        $center->parent_center_id === null
+        || $center->approval_status !== 'pending_parent_approval'
+    ) {
+        return false;
+    }
+
+    if (! $user->hasPermissionTo('ApproveChild:Center', 'web')) {
+        return false;
+    }
+
+    return app(CenterHierarchy::class)
+        ->directlyManagedCenters($user)
+        ->contains('id', (int) $center->parent_center_id);
+}
+
+/**
+ * الاعتماد النهائي من المدير العام.
+ */
+public function approveFinal(User $user, Center $center): bool
+{
+    return $user->hasRole('super_admin')
+        && $user->hasPermissionTo('ApproveFinal:Center', 'web')
+        && $center->approval_status === 'pending_super_admin_approval'
+        && $center->parent_approved_at !== null;
+}
+    /**
+     * التحقق من الوصول الهرمي.
+     */
     private function canAccess(User $user, Center $center): bool
     {
         if ($user->hasRole('super_admin')) {

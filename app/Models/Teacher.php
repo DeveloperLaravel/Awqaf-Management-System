@@ -50,5 +50,18 @@ class Teacher extends Model
             ->withPivot('is_active', 'joined_at')
             ->withTimestamps();
     }
+        /**
+     * المراكز النشطة للمعلم.
+     */
+    public function activeCenters(): BelongsToMany
+    {
+        return $this->centers()
+            ->wherePivot('is_active', true);
+    }
+
+    public function circles(): HasMany
+{
+    return $this->hasMany(Circle::class);
+}
     
 }

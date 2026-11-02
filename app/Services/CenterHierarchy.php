@@ -17,50 +17,36 @@ class CenterHierarchy
      * لا نستبعد المراكز المعلقة هنا؛ لأن المدير يحتاج إلى
      * رؤيتها حتى يتمكن من مراجعة طلبات الاعتماد.
      */
-    public function accessibleIds(int $centerId): array
-    {
-
-   // التحقق من وجود المركز قبل البحث عن المراكز التابعة له.
+   public function accessibleIds(int $centerId): array
+{
     if (! Center::query()->whereKey($centerId)->exists()) {
         return [];
     }
 
-        $allIds = [];
-        $pendingIds = [$centerId];
+    $allIds = [];
+    $pendingIds = [$centerId];
 
-        while ($pendingIds !== []) {
-            $currentBatch = array_values(array_unique(
-                array_map('intval', $pendingIds)
-            ));
+    while (! empty($pendingIds)) {
+        $currentBatch = array_values(array_diff(
+            array_unique(array_map('intval', $pendingIds)),
+            $allIds,
+        ));
 
-            $pendingIds = [];
-
-            foreach ($currentBatch as $id) {
-                if (in_array($id, $allIds, true)) {
-                    continue;
-                }
-
-                $allIds[] = $id;
-            }
-
-            if ($currentBatch === []) {
-                continue;
-            }
-
-            $children = Center::query()
-                ->whereIn('parent_center_id', $currentBatch)
-                ->pluck('id')
-                ->map(fn ($id): int => (int) $id)
-                ->all();
-
-            $pendingIds = array_values(array_diff(
-                $children,
-                $allIds,
-            ));
+        if (empty($currentBatch)) {
+            break;
         }
 
-        return $allIds;
+        $allIds = array_merge($allIds, $currentBatch);
+
+        $pendingIds = Center::query()
+            ->whereIn('parent_center_id', $currentBatch)
+            ->pluck('id')
+            ->map(fn ($id): int => (int) $id)
+            ->all();
     }
+
+    return array_values(array_unique($allIds));
+}
 
     /**
      * إرجاع المراكز التي يستطيع المستخدم الوصول إليها
@@ -135,26 +121,26 @@ class CenterHierarchy
      * المراكز التي يديرها المستخدم مباشرة فقط.
      * تُستخدم عند اختيار مركز أب لإنشاء مركز فرعي.
      */
-    public function directlyManagedCenters(User $user): Collection
-    {
-        if ($user->hasRole('super_admin')) {
-            return Center::query()
-                ->orderBy('name')
-                ->get();
-        }
-
-        $ids = $user->managedCenters()
-            ->pluck('centers.id')
-            ->map(fn ($id): int => (int) $id)
-            ->all();
-
-        if ($user->center_id !== null) {
-            $ids[] = (int) $user->center_id;
-        }
-
+  public function directlyManagedCenters(User $user): Collection
+{
+    if ($user->hasRole('super_admin')) {
         return Center::query()
-            ->whereIn('id', array_values(array_unique($ids)))
             ->orderBy('name')
             ->get();
     }
+
+    $ids = $user->managedCenters()
+        ->pluck('centers.id')
+        ->map(fn ($id): int => (int) $id)
+        ->all();
+
+    if ($user->center_id !== null) {
+        $ids[] = (int) $user->center_id;
+    }
+
+    return Center::query()
+        ->whereIn('id', array_unique($ids))
+        ->orderBy('name')
+        ->get();
+}
 }

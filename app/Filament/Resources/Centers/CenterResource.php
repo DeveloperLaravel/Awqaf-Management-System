@@ -38,16 +38,20 @@ class CenterResource extends Resource
         return 'إدارة المراكز';
     }
 
-    /**
-     * عرض قائمة المراكز.
-     */
-    public static function canViewAny(): bool
-    {
-        $user = Auth::user();
+/**
+ * عرض قائمة المراكز.
+ */
+public static function canViewAny(): bool
+{
+    $user = Auth::user();
 
-        return $user instanceof User
-            && Gate::forUser($user)->allows('viewAny', Center::class);
-    }
+    return $user instanceof User
+        && (
+            Gate::forUser($user)->allows('viewAny', Center::class)
+            || $user->can('ViewAll:Center')
+        );
+}
+
 
     /**
      * عرض مركز معين.
@@ -93,7 +97,7 @@ class CenterResource extends Resource
 
         return $user instanceof User
             && $record instanceof Center
-            && Gate::forUser($user)->allows('delete', $record);
+            && Gate::forUser($user)->allows('Delete:Center', $record);
     }
 
     /**
@@ -108,58 +112,52 @@ class CenterResource extends Resource
      * نطاق المراكز التي تظهر للمستخدم،
      * مع ترتيب المراكز والفروع بصورة هرمية.
      */
-    public static function getEloquentQuery(): Builder
-    {
-        $query = parent::getEloquentQuery()
-            ->with([
-                'region',
-                'parentCenter',
-            ]);
+   public static function getEloquentQuery(): Builder
+{
+    $query = parent::getEloquentQuery()
+        ->with([
+            'region',
+            'parentCenter',
+        ]);
 
-        $user = Auth::user();
+    $user = Auth::user();
 
-        if (! $user instanceof User) {
-            return $query->whereRaw('1 = 0');
-        }
-
-        /*
-         * المدير العام يرى جميع المراكز.
-         */
-        if ($user->hasRole('super_admin')) {
-            return self::applyHierarchyOrder($query);
-        }
-
-        /*
-         * التحقق من صلاحية عرض قائمة المراكز.
-         */
-        if (! Gate::forUser($user)->allows('viewAny', Center::class)) {
-            return $query->whereRaw('1 = 0');
-        }
-
-        /*
-         * صلاحية العرض الشامل.
-         */
-        if ($user->hasPermissionTo('centers.view_all', 'web')) {
-            return self::applyHierarchyOrder($query);
-        }
-
-        /*
-         * جلب المركز والمراكز التابعة للمستخدم
-         * وفق خدمة CenterHierarchy.
-         */
-        $centerIds = collect(
-            app(CenterHierarchy::class)->accessibleIdsForUser($user)
-        )->all();
-
-        if (empty($centerIds)) {
-            return $query->whereRaw('1 = 0');
-        }
-
-        return self::applyHierarchyOrder(
-            $query->whereIn('centers.id', $centerIds)
-        );
+    if (! $user instanceof User) {
+        return $query->whereRaw('1 = 0');
     }
 
+    // المدير العام يرى جميع المراكز.
+    if ($user->hasRole('super_admin')) {
+        return self::applyHierarchyOrder($query);
+    }
+
+    $gate = Gate::forUser($user);
+
+    $canViewAny = $gate->allows('viewAny', Center::class);
+    $canViewAll = $user->can('ViewAll:Center');
+
+    // لا يملك صلاحية عرض المراكز.
+    if (! $canViewAny && ! $canViewAll) {
+        return $query->whereRaw('1 = 0');
+    }
+
+    // صاحب صلاحية العرض الشامل يرى جميع المراكز.
+    if ($canViewAll) {
+        return self::applyHierarchyOrder($query);
+    }
+
+    // بقية المستخدمين يرون مراكزهم والفروع التابعة لها.
+    $centerIds = app(CenterHierarchy::class)
+        ->accessibleIdsForUser($user);
+
+    if (empty($centerIds)) {
+        return $query->whereRaw('1 = 0');
+    }
+
+    return self::applyHierarchyOrder(
+        $query->whereIn('centers.id', $centerIds)
+    );
+}
     /**
      * ترتيب المراكز حسب الشجرة الهرمية.
      *

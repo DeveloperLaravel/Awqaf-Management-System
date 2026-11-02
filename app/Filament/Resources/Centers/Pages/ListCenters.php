@@ -21,9 +21,10 @@ class ListCenters extends ListRecords
         $user = Auth::user();
 
         return [
-            // إنشاء مركز رئيسي للمدير العام.
+
+            // 1. إنشاء مركز رئيسي للمدير العام.
             CreateAction::make()
-                ->label('إضافة مركز')
+                ->label('إضافة مركز رئيسي')
                 ->icon('heroicon-o-building-library')
                 ->visible(
                     fn (): bool =>
@@ -32,7 +33,7 @@ class ListCenters extends ListRecords
                         && CenterResource::canCreate()
                 ),
 
-            // إنشاء فرع لمدير المركز.
+            // 2. إنشاء فرع للمستخدم الذي يملك صلاحية الإنشاء.
             Action::make('createChild')
                 ->label('إنشاء فرع')
                 ->icon('heroicon-o-plus-circle')
@@ -44,8 +45,43 @@ class ListCenters extends ListRecords
                     fn (): bool =>
                         $user !== null
                         && ! $user->hasRole('super_admin')
-                        &&  Gate::forUser(Auth::user())
-            ->allows('create', Center::class)
+                        && Gate::forUser($user)
+                            ->allows('create', Center::class)
+                ),
+
+            // 3. عرض طلبات الاعتماد النهائي للمدير العام.
+            Action::make('pendingFinalApprovals')
+                ->label('طلبات الاعتماد النهائي')
+                ->icon('heroicon-o-clipboard-document-check')
+                ->color('warning')
+                ->badge(
+                    fn (): int => Center::query()
+                        ->where(
+                            'approval_status',
+                            'pending_super_admin_approval'
+                        )
+                        ->count()
+                )
+                ->visible(
+                    fn (): bool =>
+                        $user !== null
+                        && $user->hasRole('super_admin')
+                        && $user->can('ApproveFinal:Center')
+                        && Center::query()
+                            ->where(
+                                'approval_status',
+                                'pending_super_admin_approval'
+                            )
+                            ->exists()
+                )
+                ->url(
+                    fn (): string => CenterResource::getUrl('index', [
+                        'tableFilters' => [
+                            'approval_status' => [
+                                'value' => 'pending_super_admin_approval',
+                            ],
+                        ],
+                    ])
                 ),
         ];
     }
