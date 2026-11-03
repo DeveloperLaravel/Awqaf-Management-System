@@ -10,29 +10,20 @@ use App\Models\User;
 use App\Services\CenterHierarchy;
 use Filament\Resources\Pages\CreateRecord;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Spatie\Permission\Models\Role;
-use Illuminate\Support\Facades\Gate;
 
 class CreateCenter extends CreateRecord
 {
     protected static string $resource = CenterResource::class;
 
-    /**
-     * هل يتم إنشاء مركز فرعي؟
-     */
     protected bool $createAsChild = false;
 
-    /**
-     * رقم المركز الأب.
-     */
     protected ?int $parentCenterId = null;
 
-    /**
-     * طريقة تحديد مدير المركز الرئيسي.
-     */
     protected string $managerMode = 'new';
 
     protected ?int $managerId = null;
@@ -45,26 +36,18 @@ class CreateCenter extends CreateRecord
 
     /**
      * التحقق من صلاحية إنشاء المركز.
-     *
-     * المدير العام يستطيع إنشاء مركز رئيسي أو فرعي.
-     * بقية المستخدمين يستطيعون إنشاء مركز فرعي فقط،
-     * بشرط امتلاك صلاحية Create:Center ووجود مركز مرتبط بهم.
      */
- protected function authorizeCenterCreation(User $user): void
-{
-    abort_unless(
-        Gate::forUser($user)->allows('create', Center::class),
-        403,
-        'ليس لديك صلاحية إنشاء مركز أو فرع.',
-    );
-}
+    protected function authorizeCenterCreation(User $user): void
+    {
+        Gate::forUser($user)->authorize('create', Center::class);
+    }
 
     /**
      * تجهيز بيانات النموذج قبل الحفظ.
      */
     protected function mutateFormDataBeforeCreate(array $data): array
     {
-        $user = request()->user();
+        $user = auth()->user();
 
         abort_unless($user instanceof User, 403);
 
@@ -72,23 +55,17 @@ class CreateCenter extends CreateRecord
 
         $isSuperAdmin = $user->hasRole('super_admin');
 
-        /*
-         * المدير العام يختار إنشاء مركز رئيسي أو فرعي.
-         * بقية المستخدمين ينشئون مراكز فرعية فقط.
-         */
+        // المدير العام يختار نوع المركز.
+        // بقية المستخدمين ينشئون فروعاً فقط.
         $this->createAsChild = ! $isSuperAdmin
             || ($data['center_creation_type'] ?? 'root') === 'child';
 
-        /*
-         * حفظ رقم المركز الأب قبل حذف الحقل من بيانات المركز.
-         */
+        // حفظ المركز الأب.
         $this->parentCenterId = filled($data['parent_center_id'] ?? null)
             ? (int) $data['parent_center_id']
             : null;
 
-        /*
-         * بيانات مدير المركز الرئيسي.
-         */
+        // بيانات مدير المركز الرئيسي.
         if ($isSuperAdmin && ! $this->createAsChild) {
             $this->managerMode = $data['manager_mode'] ?? 'new';
 
@@ -101,10 +78,7 @@ class CreateCenter extends CreateRecord
             $this->managerPassword = $data['manager_password'] ?? null;
         }
 
-        /*
-         * منع المستخدم من التحكم في حقول الاعتماد مباشرة.
-         * تُحدد هذه الحقول داخل منطق الإنشاء.
-         */
+        // منع التلاعب بحقول الاعتماد.
         unset(
             $data['center_creation_type'],
             $data['manager_mode'],
@@ -122,16 +96,12 @@ class CreateCenter extends CreateRecord
             $data['rejection_reason'],
         );
 
-        /*
-         * المركز الفرعي يرث المنطقة من المركز الأب.
-         */
+        // المنطقة لا يحددها مدير الفرع.
         if (! $isSuperAdmin || $this->createAsChild) {
             unset($data['region_id']);
         }
 
-        /*
-         * إنشاء رمز فريد تلقائيًا عند عدم إدخاله.
-         */
+        // توليد رمز المركز تلقائياً.
         if (blank($data['code'] ?? null)) {
             do {
                 $data['code'] = 'CENTER-' . Str::upper(Str::random(8));
@@ -146,17 +116,14 @@ class CreateCenter extends CreateRecord
     }
 
     /**
-     * إنشاء المركز وربطه بالمدير وتعيين الدور.
+     * إنشاء المركز وربطه بالمدير.
      */
     protected function handleRecordCreation(array $data): Center
     {
-        $user = request()->user();
+        $user = auth()->user();
 
         abort_unless($user instanceof User, 403);
 
-        /*
-         * إعادة التحقق من الصلاحية عند الحفظ.
-         */
         $this->authorizeCenterCreation($user);
 
         $isSuperAdmin = $user->hasRole('super_admin');
@@ -169,6 +136,7 @@ class CreateCenter extends CreateRecord
             $isSuperAdmin,
             $isRootCenter,
         ): Center {
+
             $parent = null;
 
             /*
@@ -192,42 +160,39 @@ class CreateCenter extends CreateRecord
                 $data['approved_at'] = now();
 
                 $data['rejection_reason'] = null;
-            } else {
-                   $manager = $user;
-    $roleName = 'center_admin';
-                /*
-                 * الحالة الثانية: إنشاء مركز فرعي.
-                 */
+            }
+
+            /*
+             * الحالة الثانية: إنشاء مركز فرعي.
+             */
+            else {
                 if ($this->parentCenterId === null) {
                     throw ValidationException::withMessages([
                         'parent_center_id' =>
-                            'يرجى اختيار المركز الأب للمركز الفرعي.',
+                            'يرجى اختيار المركز الأب.',
                     ]);
                 }
 
-                /*
-                 * المستخدم العادي لا يستطيع إنشاء مركز
-                 * إلا تحت مركز يديره مباشرة.
-                 */
-                if (! $isSuperAdmin) {
-                    $directParentIds = app(CenterHierarchy::class)
-                        ->directlyManagedCenters($user)
-                        ->modelKeys();
+                // المستخدم العادي يستطيع الإنشاء
+                // تحت مركز يديره مباشرة فقط.
+               if (! $isSuperAdmin) {
+    $directParentIds = app(CenterHierarchy::class)
+        ->directlyManagedCenters($user)
+        ->modelKeys();
 
-                    abort_unless(
-                        in_array(
-                            $this->parentCenterId,
-                            array_map('intval', $directParentIds),
-                            true,
-                        ),
-                        403,
-                        'لا يمكنك إنشاء مركز تابع لمركز لا تديره مباشرة.',
-                    );
-                }
+    if (! in_array(
+        (int) $this->parentCenterId,
+        array_map('intval', $directParentIds),
+        true,
+    )) {
+        abort(
+            403,
+            'لا يمكنك إنشاء فرع إلا تحت مركز تديره مباشرة.',
+        );
+    }
+}
 
-                /*
-                 * قفل المركز الأب والتحقق من اعتماده.
-                 */
+                // قفل المركز الأب أثناء الإنشاء.
                 $parent = Center::query()
                     ->whereKey($this->parentCenterId)
                     ->lockForUpdate()
@@ -245,15 +210,11 @@ class CreateCenter extends CreateRecord
                     ]);
                 }
 
-                /*
-                 * ربط المركز الفرعي بالأب ووراثة منطقته.
-                 */
+                // وراثة المنطقة من المركز الأب.
                 $data['parent_center_id'] = $parent->id;
                 $data['region_id'] = $parent->region_id;
 
-                /*
-                 * انتظار موافقة المركز الأب.
-                 */
+                // انتظار موافقة المركز الأب.
                 $data['approval_status'] = 'pending_parent_approval';
                 $data['is_active'] = false;
 
@@ -267,15 +228,17 @@ class CreateCenter extends CreateRecord
             }
 
             /*
-             * تحديد المدير والدور.
-             *
-             * المركز الرئيسي: مديره center_admin.
-             * المركز الفرعي: منشئه center_manager.
+             * تحديد المدير.
              */
             if ($isRootCenter) {
                 $manager = $this->resolveRootCenterManager();
                 $roleName = 'center_admin';
+            } elseif ($isSuperAdmin) {
+                // المدير العام لا يصبح مديراً للفرع تلقائياً.
+                $manager = $this->resolveParentCenterManager($parent);
+                $roleName = 'center_manager';
             } else {
+                // منشئ الفرع هو مديره.
                 $manager = $user;
                 $roleName = 'center_manager';
             }
@@ -284,22 +247,26 @@ class CreateCenter extends CreateRecord
              * حفظ المركز.
              */
             $center = new Center();
+
             $center->forceFill($data);
+
             $center->save();
 
             /*
-             * ربط المركز بالمدير دون حذف ارتباطاته السابقة.
+             * ربط المركز بالمدير.
              */
             $manager->managedCenters()
-                ->syncWithoutDetaching([$center->id]);
+                ->syncWithoutDetaching([
+                    $center->id,
+                ]);
 
             /*
-             * إضافة الدور المطلوب دون حذف الأدوار الأخرى.
+             * تعيين الدور دون حذف الأدوار السابقة.
              */
             $this->assignCenterRole($manager, $roleName);
 
             /*
-             * تعيين المركز الافتراضي إن لم يكن محددًا.
+             * تعيين المركز الافتراضي إذا لم يكن موجوداً.
              */
             if ($manager->center_id === null) {
                 $manager->forceFill([
@@ -310,19 +277,49 @@ class CreateCenter extends CreateRecord
             return $center;
         });
     }
-    protected function getRedirectUrl(): string
-{
-    return CenterResource::getUrl('index');
-}
+
+    /**
+     * تحديد مدير المركز الأب عند إنشاء فرع بواسطة المدير العام.
+     */
+    protected function resolveParentCenterManager(Center $parent): User
+    {
+        $manager = $parent->users()
+            ->whereHas('roles', function ($query) {
+                $query->whereIn('name', [
+                    'center_admin',
+                    'center_manager',
+                ])->where('guard_name', 'web');
+            })
+            ->lockForUpdate()
+            ->first();
+
+        if (! $manager) {
+            throw ValidationException::withMessages([
+                'parent_center_id' =>
+                    'لا يوجد مدير مرتبط بالمركز الأب. يجب تعيين مدير أولاً.',
+            ]);
+        }
+
+        return $manager;
+    }
 
     /**
      * اختيار مدير موجود أو إنشاء حساب جديد للمركز الرئيسي.
      */
+    public static function getActiveCenterIds(): array
+{
+    $user = Auth::user();
+
+    if (! $user instanceof User) {
+        return [];
+    }
+
+    return app(CenterHierarchy::class)
+        ->activeAccessibleIdsForUser($user);
+}
     protected function resolveRootCenterManager(): User
     {
-        /*
-         * الخيار الأول: مدير موجود.
-         */
+        // مدير موجود.
         if ($this->managerMode === 'existing') {
             if ($this->managerId === null) {
                 throw ValidationException::withMessages([
@@ -337,7 +334,7 @@ class CreateCenter extends CreateRecord
 
             if (! $manager) {
                 throw ValidationException::withMessages([
-                    'manager_id' => 'حساب المدير المحدد غير موجود.',
+                    'manager_id' => 'حساب المدير غير موجود.',
                 ]);
             }
 
@@ -354,9 +351,7 @@ class CreateCenter extends CreateRecord
             return $manager;
         }
 
-        /*
-         * الخيار الثاني: إنشاء حساب مدير جديد.
-         */
+        // إنشاء مدير جديد.
         if (
             blank($this->managerName)
             || blank($this->managerEmail)
@@ -375,21 +370,20 @@ class CreateCenter extends CreateRecord
                 ->exists()
         ) {
             throw ValidationException::withMessages([
-                'manager_email' => 'البريد الإلكتروني مستخدم بالفعل.',
+                'manager_email' =>
+                    'البريد الإلكتروني مستخدم بالفعل.',
             ]);
         }
 
-        $manager = User::query()->create([
+        return User::query()->create([
             'name' => $this->managerName,
             'email' => $this->managerEmail,
             'password' => Hash::make($this->managerPassword),
         ]);
-
-        return $manager;
     }
 
     /**
-     * إضافة الدور المطلوب للمستخدم.
+     * إضافة الدور للمستخدم.
      */
     protected function assignCenterRole(
         User $user,
@@ -403,5 +397,13 @@ class CreateCenter extends CreateRecord
         if (! $user->hasRole($role)) {
             $user->assignRole($role);
         }
+    }
+
+    /**
+     * العودة إلى قائمة المراكز بعد الحفظ.
+     */
+    protected function getRedirectUrl(): string
+    {
+        return CenterResource::getUrl('index');
     }
 }

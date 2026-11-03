@@ -39,17 +39,14 @@ class Teacher extends Model
      /**
      * جميع المراكز المرتبط بها المعلم.
      */
-    public function centers(): BelongsToMany
-    {
-        return $this->belongsToMany(
-            Center::class,
-            'center_teacher',
-            'teacher_id',
-            'center_id',
-        )
-            ->withPivot('is_active', 'joined_at')
-            ->withTimestamps();
-    }
+   public function centers(): BelongsToMany
+{
+    return $this->belongsToMany(
+        Center::class,
+        'center_teacher'
+    )->withPivot(['is_active', 'joined_at'])
+     ->withTimestamps();
+}
         /**
      * المراكز النشطة للمعلم.
      */

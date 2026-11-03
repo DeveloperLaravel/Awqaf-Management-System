@@ -15,7 +15,7 @@ return new class extends Migration
             $table->id();
               $table->foreignId('center_id')
         ->constrained('centers')
-        ->cascadeOnDelete();
+        ->restrictOnDelete();
 
     $table->foreignId('user_id')
         ->nullable()

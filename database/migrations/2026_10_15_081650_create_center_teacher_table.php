@@ -1,4 +1,3 @@
-
 <?php
 
 use Illuminate\Database\Migrations\Migration;
@@ -22,6 +21,7 @@ return new class extends Migration
                 ->cascadeOnDelete();
 
             $table->boolean('is_active')->default(true);
+
             $table->date('joined_at')->nullable();
 
             $table->timestamps();
@@ -30,34 +30,35 @@ return new class extends Migration
                 ['center_id', 'teacher_id'],
                 'center_teacher_unique'
             );
+
+            $table->index(
+                ['teacher_id', 'is_active'],
+                'center_teacher_teacher_active_index'
+            );
         });
 
-        // نقل ارتباط كل معلم بمركزه الحالي.
-        $now = now();
-
-        DB::table('teachers')
-            ->whereNotNull('center_id')
-            ->orderBy('id')
-            ->select('id', 'center_id')
-            ->chunk(500, function ($teachers) use ($now) {
-                $rows = [];
-
-                foreach ($teachers as $teacher) {
-                    $rows[] = [
-                        'center_id' => $teacher->center_id,
-                        'teacher_id' => $teacher->id,
-                        'is_active' => true,
-                        'joined_at' => null,
-                        'created_at' => $now,
-                        'updated_at' => $now,
-                    ];
-                }
-
-                if ($rows !== []) {
-                    DB::table('center_teacher')
-                        ->insertOrIgnore($rows);
-                }
-            });
+        // نقل الارتباطات القديمة دون تكرار.
+        DB::statement("
+            INSERT INTO center_teacher (
+                center_id,
+                teacher_id,
+                is_active,
+                joined_at,
+                created_at,
+                updated_at
+            )
+            SELECT
+                t.center_id,
+                t.id,
+                TRUE,
+                t.hire_date,
+                CURRENT_TIMESTAMP,
+                CURRENT_TIMESTAMP
+            FROM teachers t
+            INNER JOIN centers c ON c.id = t.center_id
+            WHERE t.center_id IS NOT NULL
+            ON CONFLICT (center_id, teacher_id) DO NOTHING
+        ");
     }
 
     public function down(): void

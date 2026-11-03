@@ -33,19 +33,21 @@ class Student extends Model
         return $this->belongsTo(Center::class);
     }
 
-  public function guardians(): BelongsToMany
+public function guardians(): BelongsToMany
 {
     return $this->belongsToMany(
         Guardian::class,
-        'guardian_student'
-    )
-        ->withPivot([
+        'guardian_student',
+        'student_id',
+        'guardian_id',
+    )->withPivot([
+            'id',
+            'center_id',
             'relationship',
             'is_primary',
             'can_receive_notifications',
             'can_pickup',
-        ])
-        ->withTimestamps();
+    ]);
 }
 
 public function circles(): BelongsToMany
@@ -54,7 +56,7 @@ public function circles(): BelongsToMany
         Circle::class,
         'circle_student'
     )
-        ->withPivot(['joined_at', 'left_at'])
+        ->withPivot(['center_id', 'joined_at', 'left_at'])
         ->withTimestamps();
 }
 

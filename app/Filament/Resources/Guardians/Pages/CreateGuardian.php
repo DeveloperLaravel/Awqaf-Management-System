@@ -1,47 +1,55 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Filament\Resources\Guardians\Pages;
 
 use App\Filament\Resources\Guardians\GuardianResource;
+use App\Models\Center;
+use App\Models\User;
+use App\Services\CenterHierarchy;
 use Filament\Resources\Pages\CreateRecord;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\ValidationException;
 
 class CreateGuardian extends CreateRecord
 {
     protected static string $resource = GuardianResource::class;
-protected function mutateFormDataBeforeCreate(array $data): array
-{
-    $user = \Illuminate\Support\Facades\Auth::user();
 
-    if (! $user) {
-        abort(403);
-    }
+    protected function mutateFormDataBeforeCreate(array $data): array
+    {
+        $user = Auth::user();
 
-    // المستخدم المخوّل بالوصول لجميع المراكز
-    if (\Illuminate\Support\Facades\Gate::allows('centers.view_all')) {
-        $centerId = $data['center_id'] ?? null;
+        if (! $user instanceof User) {
+            abort(403);
+        }
 
-        if (
-            ! $centerId ||
-            ! \App\Models\Center::query()
-                ->whereKey($centerId)
-                ->exists()
-        ) {
-            throw \Illuminate\Validation\ValidationException::withMessages([
-                'center_id' => 'يرجى اختيار مركز صحيح.',
+        $centerId = (int) ($data['center_id'] ?? 0);
+
+        // المراكز التي يحق للمستخدم الوصول إليها.
+        if ($user->hasRole('super_admin')) {
+            $accessibleIds = Center::query()->pluck('id')->all();
+        } else {
+            $accessibleIds = app(CenterHierarchy::class)
+                ->accessibleIdsForUser($user);
+        }
+
+        // التحقق من أن المركز أو الفرع مسموح للمستخدم.
+        $center = Center::query()
+            ->whereKey($centerId)
+            ->whereIn('id', $accessibleIds)
+            ->where('is_active', true)
+            ->where('approval_status', 'active')
+            ->first();
+
+        if (! $center) {
+            throw ValidationException::withMessages([
+                'center_id' => 'المركز أو الفرع المحدد غير متاح أو لا تملك صلاحية الوصول إليه.',
             ]);
         }
 
-        $data['center_id'] = $centerId;
-    } else {
-        // المستخدم العادي يُربط بمركزه فقط
-        if (! $user->center_id) {
-            abort(403, 'حسابك غير مرتبط بمركز.');
-        }
+        $data['center_id'] = $center->id;
 
-        $data['center_id'] = $user->center_id;
+        return $data;
     }
-
-    return $data;
 }
-}
-

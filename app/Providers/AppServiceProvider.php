@@ -14,19 +14,19 @@ use App\Models\Teacher;
 use App\Models\User;
 
 use App\Policies\AttendanceRecordPolicy;
+use App\Policies\CenterPolicy;
 use App\Policies\CirclePolicy;
 use App\Policies\GuardianPolicy;
 use App\Policies\RegionPolicy;
 use App\Policies\StudentPolicy;
 use App\Policies\TeacherPolicy;
 use App\Policies\UserPolicy;
-
-use App\Services\CenterHierarchy;
 use App\Policies\RolePolicy;
+
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\ServiceProvider;
+
 use Spatie\Permission\Models\Role;
-use App\Policies\CenterPolicy;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -37,30 +37,53 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-
-    
         /*
          * تسجيل السياسات.
          */
 
-Gate::policy(AttendanceRecord::class, AttendanceRecordPolicy::class);
-Gate::policy(Guardian::class, GuardianPolicy::class);
-Gate::policy(Student::class, StudentPolicy::class);
-Gate::policy(Circle::class, CirclePolicy::class);
-Gate::policy(Teacher::class, TeacherPolicy::class);
+        Gate::policy(
+            Center::class,
+            CenterPolicy::class,
+        );
 
+        Gate::policy(
+            Region::class,
+            RegionPolicy::class,
+        );
 
-Gate::policy(Center::class, CenterPolicy::class);
-Gate::policy(User::class, UserPolicy::class);
-Gate::policy(Region::class, RegionPolicy::class);
-Gate::policy(Role::class, RolePolicy::class);
-/*
- * صلاحيات المناطق.
- */
+        Gate::policy(
+            User::class,
+            UserPolicy::class,
+        );
 
+        Gate::policy(
+            Role::class,
+            RolePolicy::class,
+        );
 
+        Gate::policy(
+            Teacher::class,
+            TeacherPolicy::class,
+        );
 
+        Gate::policy(
+            Student::class,
+            StudentPolicy::class,
+        );
 
-     
+        Gate::policy(
+            Guardian::class,
+            GuardianPolicy::class,
+        );
+
+        Gate::policy(
+            Circle::class,
+            CirclePolicy::class,
+        );
+
+        Gate::policy(
+            AttendanceRecord::class,
+            AttendanceRecordPolicy::class,
+        );
     }
 }

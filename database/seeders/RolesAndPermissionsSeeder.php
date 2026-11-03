@@ -66,6 +66,7 @@ class RolesAndPermissionsSeeder extends Seeder
             'ViewAll:Center',
             'ApproveChild:Center',
             'ApproveFinal:Center',
+            
 
             // Users
             'ViewAny:User',
@@ -112,6 +113,13 @@ class RolesAndPermissionsSeeder extends Seeder
             'Create:Circle',
             'Update:Circle',
             'Delete:Circle',
+
+            'ViewAny:CircleStudent',
+            'View:CircleStudent',
+            'Create:CircleStudent',
+            'Update:CircleStudent',
+
+
 
             // Attendance
             'ViewAny:AttendanceRecord',

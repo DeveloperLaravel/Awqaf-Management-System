@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
@@ -11,17 +12,12 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class Center extends Model
 {
-    /*
-    |--------------------------------------------------------------------------
-    | Mass Assignment
-    |--------------------------------------------------------------------------
-    |
-    | الحقول الأساسية التي يمكن تعبئتها مباشرة.
-    | حقول الاعتماد والموافقة تُدار من خلال إجراءات الخادم
-    | وليس من نموذج إنشاء المركز العادي.
-    |
-    */
-
+    /**
+     * الحقول المسموح بتعبئتها من النماذج العادية.
+     *
+     * حقول الهرمية والاعتماد تُعدّل من إجراءات الخادم
+     * باستخدام forceFill بعد التحقق من الصلاحيات.
+     */
     protected $fillable = [
         'name',
         'region_id',
@@ -32,12 +28,6 @@ class Center extends Model
         'is_active',
     ];
 
-    /*
-    |--------------------------------------------------------------------------
-    | Casts
-    |--------------------------------------------------------------------------
-    */
-
     protected function casts(): array
     {
         return [
@@ -47,107 +37,103 @@ class Center extends Model
         ];
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Region
-    |--------------------------------------------------------------------------
-    */
+    // -----------------------------------------------------------------
+    // المنطقة
+    // -----------------------------------------------------------------
 
-    /**
-     * المنطقة التي يتبع لها المركز.
-     */
     public function region(): BelongsTo
     {
         return $this->belongsTo(Region::class);
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Center Hierarchy
-    |--------------------------------------------------------------------------
-    */
+    // -----------------------------------------------------------------
+    // الهيكل الهرمي
+    // -----------------------------------------------------------------
 
     /**
-     * المركز الأب.
+     * المركز الأب المباشر.
      */
     public function parentCenter(): BelongsTo
     {
-        return $this->belongsTo(
-            Center::class,
-            'parent_center_id',
-        );
+        return $this->belongsTo(Center::class, 'parent_center_id');
     }
 
     /**
-     * الفروع المباشرة التابعة للمركز.
+     * الفروع المباشرة التابعة لهذا المركز.
      */
     public function childCenters(): HasMany
     {
-        return $this->hasMany(
-            Center::class,
-            'parent_center_id',
-        );
+        return $this->hasMany(Center::class, 'parent_center_id');
     }
 
     /**
-     * جميع الفروع المباشرة وغير المباشرة.
+     * جلب جميع الفروع التابعة، المباشرة وغير المباشرة.
+     *
+     * هذه دالة استعلام وليست علاقة Eloquent؛
+     * لأنها ترجع مجموعة من جميع المستويات.
      */
-    public function descendants(): HasMany
+    public function descendants(): Collection
     {
-        return $this->childCenters()->with('descendants');
+        $parentIds = [$this->getKey()];
+        $descendantIds = [];
+
+        while (! empty($parentIds)) {
+            $children = static::query()
+                ->whereIn('parent_center_id', $parentIds)
+                ->whereNotIn('id', $descendantIds)
+                ->get(['id']);
+
+            $newIds = $children->pluck('id')->all();
+
+            if (empty($newIds)) {
+                break;
+            }
+
+            $descendantIds = array_merge($descendantIds, $newIds);
+            $parentIds = $newIds;
+        }
+
+        if (empty($descendantIds)) {
+            return new Collection();
+        }
+
+        return static::query()
+            ->whereIn('id', $descendantIds)
+            ->with(['region', 'parentCenter'])
+            ->orderBy('id')
+            ->get();
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Approval Workflow
-    |--------------------------------------------------------------------------
-    */
+    // -----------------------------------------------------------------
+    // الاعتماد والموافقات
+    // -----------------------------------------------------------------
 
-    /**
-     * المستخدم الذي وافق على الفرع من جهة المركز الأب.
-     */
     public function parentApprover(): BelongsTo
     {
-        return $this->belongsTo(
-            User::class,
-            'parent_approved_by',
-        );
+        return $this->belongsTo(User::class, 'parent_approved_by');
     }
 
-    /**
-     * المستخدم الذي اعتمد المركز نهائياً.
-     */
     public function finalApprover(): BelongsTo
     {
-        return $this->belongsTo(
-            User::class,
-            'approved_by',
-        );
+        return $this->belongsTo(User::class, 'approved_by');
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Users
-    |--------------------------------------------------------------------------
-    */
+    // -----------------------------------------------------------------
+    // المستخدمون
+    // -----------------------------------------------------------------
 
     /**
-     * جميع المستخدمين التابعين للمركز الأساسي.
+     * المستخدمون المرتبطون بالمركز عبر users.center_id.
      *
-     * يعتمد على users.center_id.
+     * هذه العلاقة لا تعني بالضرورة أنهم مديرون.
      */
     public function users(): HasMany
     {
-        return $this->hasMany(
-            User::class,
-            'center_id',
-        );
+        return $this->hasMany(User::class, 'center_id');
     }
 
     /**
-     * المستخدمون المكلفون بإدارة هذا المركز.
-     *
-     * يعتمد على جدول center_user.
+     * المستخدمون المكلفون بإدارة المركز عبر center_user.
      */
     public function managers(): BelongsToMany
     {
@@ -167,44 +153,26 @@ class Center extends Model
         return $this->managers();
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Students
-    |--------------------------------------------------------------------------
-    */
+    // -----------------------------------------------------------------
+    // الطلاب وأولياء الأمور
+    // -----------------------------------------------------------------
 
-    /**
-     * الطلاب التابعون للمركز.
-     */
     public function students(): HasMany
     {
-        return $this->hasMany(Student::class);
+        return $this->hasMany(Student::class, 'center_id');
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Guardians
-    |--------------------------------------------------------------------------
-    */
-
-    /**
-     * أولياء الأمور التابعون للمركز.
-     */
     public function guardians(): HasMany
     {
-        return $this->hasMany(Guardian::class);
+        return $this->hasMany(Guardian::class, 'center_id');
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Teachers
-    |--------------------------------------------------------------------------
-    */
+    // -----------------------------------------------------------------
+    // المعلمون
+    // -----------------------------------------------------------------
 
     /**
-     * المعلمون المرتبطون بالمركز.
-     *
-     * يمكن للمعلم العمل في أكثر من مركز.
+     * المعلم قد يعمل في أكثر من مركز.
      */
     public function teachers(): BelongsToMany
     {
@@ -221,17 +189,12 @@ class Center extends Model
             ->withTimestamps();
     }
 
-    /*
-    |--------------------------------------------------------------------------
-    | Circles
-    |--------------------------------------------------------------------------
-    */
+    // -----------------------------------------------------------------
+    // الحلقات
+    // -----------------------------------------------------------------
 
-    /**
-     * حلقات التحفيظ التابعة للمركز.
-     */
     public function circles(): HasMany
     {
-        return $this->hasMany(Circle::class);
+        return $this->hasMany(Circle::class, 'center_id');
     }
 }

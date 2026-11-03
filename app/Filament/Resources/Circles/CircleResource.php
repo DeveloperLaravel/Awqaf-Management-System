@@ -25,8 +25,8 @@ class CircleResource extends Resource
 
     protected static ?string $navigationLabel = 'الحلقات';
 
-    protected static \UnitEnum|string|null $navigationGroup =
-        'إدارة الوسط';
+    protected static string|\UnitEnum|null $navigationGroup = 'إدارة الحلقات';
+ 
 
     protected static ?int $navigationSort = 2;
 

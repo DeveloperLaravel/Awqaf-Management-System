@@ -12,35 +12,35 @@ class GuardianPolicy
 {
     public function viewAny(User $user): bool
     {
-        return $user->can('guardians.view');
+        return $user->can('ViewAny:Guardian');
     }
 
     public function view(User $user, Guardian $guardian): bool
     {
-        return $user->can('guardians.view')
+        return $user->can('View:Guardian')
             && $this->canAccessCenter($user, $guardian);
     }
 
     public function create(User $user): bool
     {
-        return $user->can('guardians.create');
+        return $user->can('Create:Guardian');
     }
 
     public function update(User $user, Guardian $guardian): bool
     {
-        return $user->can('guardians.update')
+        return $user->can('Update:Guardian')
             && $this->canAccessCenter($user, $guardian);
     }
 
     public function delete(User $user, Guardian $guardian): bool
     {
-        return $user->can('guardians.delete')
+        return $user->can('Delete:Guardian')
             && $this->canAccessCenter($user, $guardian);
     }
 
     public function deleteAny(User $user): bool
     {
-        return $user->can('guardians.delete');
+        return $user->can('Delete:Guardian');
     }
 
     private function canAccessCenter(

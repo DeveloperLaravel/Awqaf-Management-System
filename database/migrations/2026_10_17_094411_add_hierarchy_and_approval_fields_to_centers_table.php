@@ -9,7 +9,8 @@ return new class extends Migration
 {
     public function up(): void
     {
-        if (!Schema::hasColumn('centers', 'parent_center_id')) {
+        // علاقة المركز الأب
+        if (! Schema::hasColumn('centers', 'parent_center_id')) {
             Schema::table('centers', function (Blueprint $table) {
                 $table->foreignId('parent_center_id')
                     ->nullable()
@@ -18,23 +19,31 @@ return new class extends Migration
             });
         }
 
-        if (!Schema::hasColumn('centers', 'approval_status')) {
+        // حالة اعتماد المركز
+        if (! Schema::hasColumn('centers', 'approval_status')) {
             Schema::table('centers', function (Blueprint $table) {
                 $table->string('approval_status', 40)
                     ->default('pending_parent_approval');
             });
 
+            // المراكز الرئيسية القديمة
             DB::table('centers')
                 ->whereNull('parent_center_id')
-                ->update(['approval_status' => 'active']);
+                ->update([
+                    'approval_status' => 'active',
+                ]);
 
+            // الفروع القديمة النشطة
             DB::table('centers')
                 ->whereNotNull('parent_center_id')
                 ->where('is_active', true)
-                ->update(['approval_status' => 'active']);
+                ->update([
+                    'approval_status' => 'active',
+                ]);
         }
 
-        if (!Schema::hasColumn('centers', 'parent_approved_by')) {
+        // موافقة المركز الأب
+        if (! Schema::hasColumn('centers', 'parent_approved_by')) {
             Schema::table('centers', function (Blueprint $table) {
                 $table->foreignId('parent_approved_by')
                     ->nullable()
@@ -43,13 +52,15 @@ return new class extends Migration
             });
         }
 
-        if (!Schema::hasColumn('centers', 'parent_approved_at')) {
+        if (! Schema::hasColumn('centers', 'parent_approved_at')) {
             Schema::table('centers', function (Blueprint $table) {
-                $table->timestamp('parent_approved_at')->nullable();
+                $table->timestamp('parent_approved_at')
+                    ->nullable();
             });
         }
 
-        if (!Schema::hasColumn('centers', 'approved_by')) {
+        // موافقة المدير العام
+        if (! Schema::hasColumn('centers', 'approved_by')) {
             Schema::table('centers', function (Blueprint $table) {
                 $table->foreignId('approved_by')
                     ->nullable()
@@ -58,21 +69,32 @@ return new class extends Migration
             });
         }
 
-        if (!Schema::hasColumn('centers', 'approved_at')) {
+        if (! Schema::hasColumn('centers', 'approved_at')) {
             Schema::table('centers', function (Blueprint $table) {
-                $table->timestamp('approved_at')->nullable();
+                $table->timestamp('approved_at')
+                    ->nullable();
             });
         }
 
-        if (!Schema::hasColumn('centers', 'rejection_reason')) {
+        // سبب الرفض
+        if (! Schema::hasColumn('centers', 'rejection_reason')) {
             Schema::table('centers', function (Blueprint $table) {
-                $table->text('rejection_reason')->nullable();
+                $table->text('rejection_reason')
+                    ->nullable();
             });
         }
 
-        if (!Schema::hasColumn('centers', 'parent_center_id')) {
-            // لا ينفذ عادة؛ الفهرس يعتمد على وجود العمود.
-        } else {
+        // فهرس علاقة الأب والحالة
+        $indexExists = DB::table('pg_indexes')
+            ->where('schemaname', 'public')
+            ->where('tablename', 'centers')
+            ->where('indexname', 'centers_parent_active_index')
+            ->exists();
+
+        if (
+            Schema::hasColumn('centers', 'parent_center_id')
+            && ! $indexExists
+        ) {
             Schema::table('centers', function (Blueprint $table) {
                 $table->index(
                     ['parent_center_id', 'is_active'],
@@ -80,14 +102,10 @@ return new class extends Migration
                 );
             });
         }
-
-        Schema::table('centers', function (Blueprint $table) {
-            // فهرس الحالة إذا لم يكن موجوداً مسبقاً
-        });
     }
 
     public function down(): void
     {
-        // الحفاظ على البيانات والأعمدة عند التراجع.
+        // لا نحذف الأعمدة أو البيانات عند التراجع.
     }
 };

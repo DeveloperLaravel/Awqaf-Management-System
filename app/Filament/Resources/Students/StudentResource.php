@@ -1,101 +1,196 @@
 <?php
 
-declare(strict_types=1);
-
 namespace App\Filament\Resources\Students;
 
 use App\Filament\Resources\Students\Pages;
-use App\Filament\Resources\Students\Schemas\StudentForm;
-use App\Filament\Resources\Students\Tables\StudentsTable;
+use App\Models\Center;
 use App\Models\Student;
-use App\Support\StudentCenterAccess;
+use App\Services\CenterHierarchy;
+use Filament\Forms\Components\DatePicker;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\Toggle;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables\Table;
+use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Columns\IconColumn;
+use Filament\Tables\Filters\SelectFilter;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Facades\Auth;
 
 class StudentResource extends Resource
 {
     protected static ?string $model = Student::class;
 
-    protected static ?string $recordTitleAttribute = 'full_name';
-  protected static \UnitEnum|string|null $navigationGroup =
-        'إدارة  الوسط';
+    protected static ?string $modelLabel = 'طالب';
 
-      protected static ?int $navigationSort = 2;
+    protected static ?string $pluralModelLabel = 'الطلاب';
+
+    protected static ?string $navigationLabel = 'الطلاب';
+
+    protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-users';
+
+    protected static string|\UnitEnum|null $navigationGroup = 'إدارة التعليم';
+
+    protected static ?int $navigationSort = 1;
+
     public static function form(Schema $schema): Schema
     {
-        return StudentForm::configure($schema);
+        return $schema->components([
+            \Filament\Schemas\Components\Section::make('البيانات الأساسية')
+                ->schema([
+                    Select::make('center_id')
+                        ->label('المركز')
+                        ->options(fn () => self::availableCenters())
+                        ->searchable()
+                        ->preload()
+                        ->required(),
+
+                    TextInput::make('student_code')
+                        ->label('رقم الطالب')
+                        ->required()
+                        ->maxLength(50),
+
+                    TextInput::make('full_name')
+                        ->label('اسم الطالب')
+                        ->required()
+                        ->maxLength(255),
+
+                    Select::make('gender')
+                        ->label('الجنس')
+                        ->options([
+                            'male' => 'ذكر',
+                            'female' => 'أنثى',
+                        ]),
+
+                    DatePicker::make('birth_date')
+                        ->label('تاريخ الميلاد')
+                        ->native(false),
+
+                    DatePicker::make('enrollment_date')
+                        ->label('تاريخ الالتحاق')
+                        ->native(false),
+
+                    TextInput::make('school_grade')
+                        ->label('المرحلة الدراسية')
+                        ->maxLength(100),
+
+                    TextInput::make('phone')
+                        ->label('رقم الهاتف')
+                        ->tel()
+                        ->maxLength(30),
+
+                    Textarea::make('address')
+                        ->label('العنوان')
+                        ->columnSpanFull(),
+
+                    Textarea::make('notes')
+                        ->label('ملاحظات')
+                        ->columnSpanFull(),
+
+                    Toggle::make('is_active')
+                        ->label('الطالب نشط')
+                        ->default(true),
+                ])
+                ->columns(2),
+        ]);
     }
 
     public static function table(Table $table): Table
     {
-        return StudentsTable::configure($table);
+        return $table
+            ->columns([
+                TextColumn::make('student_code')
+                    ->label('رقم الطالب')
+                    ->searchable()
+                    ->sortable(),
+
+                TextColumn::make('full_name')
+                    ->label('اسم الطالب')
+                    ->searchable()
+                    ->sortable(),
+
+                TextColumn::make('center.name')
+                    ->label('المركز')
+                    ->sortable(),
+
+                TextColumn::make('gender')
+                    ->label('الجنس')
+                    ->formatStateUsing(fn ($state) => match ($state) {
+                        'male' => 'ذكر',
+                        'female' => 'أنثى',
+                        default => 'غير محدد',
+                    }),
+
+                TextColumn::make('phone')
+                    ->label('الهاتف')
+                    ->searchable(),
+
+                TextColumn::make('enrollment_date')
+                    ->label('تاريخ الالتحاق')
+                    ->date(),
+
+                IconColumn::make('is_active')
+                    ->label('الحالة')
+                    ->boolean(),
+            ])
+            ->filters([
+                SelectFilter::make('center_id')
+                    ->label('المركز')
+                    ->options(fn () => self::availableCenters()),
+
+                SelectFilter::make('gender')
+                    ->label('الجنس')
+                    ->options([
+                        'male' => 'ذكر',
+                        'female' => 'أنثى',
+                    ]),
+
+                SelectFilter::make('is_active')
+                    ->label('الحالة')
+                    ->options([
+                        1 => 'نشط',
+                        0 => 'غير نشط',
+                    ]),
+            ])
+            ->defaultSort('created_at', 'desc')
+            ->recordActions([
+                \Filament\Actions\ViewAction::make(),
+                \Filament\Actions\EditAction::make(),
+                \Filament\Actions\DeleteAction::make(),
+            ]);
     }
 
-    /**
-     * المشرف العام يرى طلاب الفروع الفعالة والمعتمدة.
-     * مدير المركز يرى طلاب الفروع المصرح بها لحسابه فقط.
-     */
-    public static function getEloquentQuلاery(): Builder
+    public static function getEloquentQuery(): Builder
     {
-        $query = parent::getEloquentQuery();
-        $user = Auth::user();
+        return parent::getEloquentQuery()
+            ->whereIn('center_id', self::accessibleCenterIds());
+    }
+
+    protected static function accessibleCenterIds(): array
+    {
+        $user = auth()->user();
 
         if (! $user) {
-            return $query->whereRaw('1 = 0');
+            return [];
         }
 
-        $branchIds = StudentCenterAccess::branchIdsFor($user);
-
-        if ($branchIds === []) {
-            return $query->whereRaw('1 = 0');
+        if ($user->hasRole('super_admin')) {
+            return Center::query()->pluck('id')->all();
         }
 
-        return $query->whereIn('center_id', $branchIds);
+        return app(CenterHierarchy::class)
+            ->accessibleIdsForUser($user);
     }
 
-    public static function canViewAny(): bool
+    protected static function availableCenters(): array
     {
-        $user = request()->user();
-
-        return $user !== null
-            && $user->can('viewAny', Student::class);
-    }
-
-    public static function canCreate(): bool
-    {
-        $user = request()->user();
-
-        return $user !== null
-            && $user->can('create', Student::class);
-    }
-
-    public static function canEdit($record): bool
-    {
-        $user = request()->user();
-
-        return $user !== null
-            && $record instanceof Student
-            && $user->can('update', $record);
-    }
-
-    public static function canDelete($record): bool
-    {
-        $user = request()->user();
-
-        return $user !== null
-            && $record instanceof Student
-            && $user->can('delete', $record);
-    }
-
-    public static function canDeleteAny(): bool
-    {
-        $user = request()->user();
-
-        return $user !== null
-            && $user->can('deleteAny', Student::class);
+        return Center::query()
+            ->whereIn('id', self::accessibleCenterIds())
+            ->orderBy('name')
+            ->pluck('name', 'id')
+            ->all();
     }
 
     public static function getPages(): array

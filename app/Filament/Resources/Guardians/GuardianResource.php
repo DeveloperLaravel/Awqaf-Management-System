@@ -1,113 +1,182 @@
 <?php
 
-declare(strict_types=1);
-
 namespace App\Filament\Resources\Guardians;
 
-use App\Filament\Resources\Concerns\BelongsToCenter;
-use App\Filament\Resources\Guardians\Pages\CreateGuardian;
-use App\Filament\Resources\Guardians\Pages\EditGuardian;
-use App\Filament\Resources\Guardians\Pages\ListGuardians;
-use App\Filament\Resources\Guardians\Pages\ViewGuardian;
-use App\Filament\Resources\Guardians\Schemas\GuardianForm;
-use App\Filament\Resources\Guardians\Schemas\GuardianInfolist;
-use App\Filament\Resources\Guardians\Tables\GuardiansTable;
+use App\Filament\Resources\Guardians\Pages;
+use App\Models\Center;
 use App\Models\Guardian;
-use BackedEnum;
+use App\Services\CenterHierarchy;
+use Filament\Forms\Components\Select;
+use Filament\Forms\Components\Textarea;
+use Filament\Forms\Components\TextInput;
+use Filament\Forms\Components\Toggle;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
-use Filament\Support\Icons\Heroicon;
 use Filament\Tables\Table;
+use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Columns\IconColumn;
+use Filament\Tables\Filters\SelectFilter;
 use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Database\Eloquent\Model;
-use Illuminate\Support\Facades\Gate;
 
 class GuardianResource extends Resource
 {
-    use BelongsToCenter;
-
     protected static ?string $model = Guardian::class;
 
-    protected static string|BackedEnum|null $navigationIcon =
-        Heroicon::OutlinedRectangleStack;
+    protected static ?string $modelLabel = 'ولي أمر';
 
-    protected static ?string $recordTitleAttribute = 'full_name';
-  protected static \UnitEnum|string|null $navigationGroup =
-        'إدارة  الوسط';
-      protected static ?int $navigationSort = 3;
+    protected static ?string $pluralModelLabel = 'أولياء الأمور';
+
+    protected static ?string $navigationLabel = 'أولياء الأمور';
+
+    protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-user-group';
+
+    protected static string|\UnitEnum|null $navigationGroup = 'إدارة التعليم';
+
+    protected static ?int $navigationSort = 2;
+
     public static function form(Schema $schema): Schema
     {
-        return GuardianForm::configure($schema);
-    }
+        return $schema->components([
+            \Filament\Schemas\Components\Section::make('بيانات ولي الأمر')
+                ->schema([
+                Select::make('center_id')
+    ->label('المركز / الفرع')
+    ->options(fn () => self::availableCenters())
+    ->default(fn () => auth()->user()?->center_id)
+    ->searchable()
+    ->preload()
+    ->required()
+    ->validationMessages([
+        'required' => 'يرجى اختيار المركز أو الفرع.',
+    ]),
 
-    public static function infolist(Schema $schema): Schema
-    {
-        return GuardianInfolist::configure($schema);
+                    TextInput::make('full_name')
+                        ->label('الاسم الكامل')
+                        ->required()
+                        ->maxLength(255),
+
+                    TextInput::make('phone')
+                        ->label('رقم الهاتف')
+                        ->tel()
+                        ->maxLength(30),
+
+                    TextInput::make('email')
+                        ->label('البريد الإلكتروني')
+                        ->email()
+                        ->maxLength(255),
+
+                    TextInput::make('national_id')
+                        ->label('الرقم الوطني')
+                        ->maxLength(30),
+
+                    TextInput::make('occupation')
+                        ->label('المهنة')
+                        ->maxLength(255),
+
+                    Textarea::make('address')
+                        ->label('العنوان')
+                        ->columnSpanFull(),
+
+                    Textarea::make('notes')
+                        ->label('ملاحظات')
+                        ->columnSpanFull(),
+
+                    Toggle::make('is_active')
+                        ->label('ولي الأمر نشط')
+                        ->default(true),
+                ])
+                ->columns(2),
+        ]);
     }
 
     public static function table(Table $table): Table
     {
-        return GuardiansTable::configure($table);
+        return $table
+            ->columns([
+                TextColumn::make('full_name')
+                    ->label('اسم ولي الأمر')
+                    ->searchable()
+                    ->sortable(),
+
+                TextColumn::make('center.name')
+                    ->label('المركز')
+                    ->sortable(),
+
+                TextColumn::make('phone')
+                    ->label('الهاتف')
+                    ->searchable(),
+
+                TextColumn::make('email')
+                    ->label('البريد الإلكتروني')
+                    ->searchable(),
+
+                TextColumn::make('national_id')
+                    ->label('الرقم الوطني')
+                    ->searchable(),
+
+                IconColumn::make('is_active')
+                    ->label('الحالة')
+                    ->boolean(),
+            ])
+            ->filters([
+                SelectFilter::make('center_id')
+                    ->label('المركز')
+                    ->options(fn () => self::availableCenters()),
+
+                SelectFilter::make('is_active')
+                    ->label('الحالة')
+                    ->options([
+                        1 => 'نشط',
+                        0 => 'غير نشط',
+                    ]),
+            ])
+            ->defaultSort('created_at', 'desc')
+            ->recordActions([
+                \Filament\Actions\ViewAction::make(),
+                \Filament\Actions\EditAction::make(),
+                \Filament\Actions\DeleteAction::make(),
+            ]);
     }
 
-    public static function getRelations(): array
+    public static function getEloquentQuery(): Builder
     {
-        return [];
+        return parent::getEloquentQuery()
+            ->whereIn('center_id', self::accessibleCenterIds());
     }
 
+    protected static function accessibleCenterIds(): array
+    {
+        $user = auth()->user();
+
+        if (! $user) {
+            return [];
+        }
+
+        if ($user->hasRole('super_admin')) {
+            return Center::query()->pluck('id')->all();
+        }
+
+        return app(CenterHierarchy::class)
+            ->accessibleIdsForUser($user);
+    }
+
+ protected static function availableCenters(): array
+{
+    return Center::query()
+        ->whereIn('id', self::accessibleCenterIds())
+        ->where('is_active', true)
+        ->where('approval_status', 'active')
+        ->orderBy('name')
+        ->pluck('name', 'id')
+        ->all();
+}
     public static function getPages(): array
     {
         return [
-            'index' => ListGuardians::route('/'),
-            'create' => CreateGuardian::route('/create'),
-            'view' => ViewGuardian::route('/{record}'),
-            'edit' => EditGuardian::route('/{record}/edit'),
+            'index' => Pages\ListGuardians::route('/'),
+            'create' => Pages\CreateGuardian::route('/create'),
+            'view' => Pages\ViewGuardian::route('/{record}'),
+            'edit' => Pages\EditGuardian::route('/{record}/edit'),
         ];
-    }
-
-    /**
-     * عزل السجلات حسب نطاق المراكز المسموح للمستخدم.
-     */
-    public static function getEloquentQuery(): Builder
-    {
-        return static::applyCenterScope(
-            parent::getEloquentQuery()
-        );
-    }
-
-    public static function canViewAny(): bool
-    {
-        return Gate::allows('guardians.view');
-    }
-
-    public static function canCreate(): bool
-    {
-        return Gate::allows('guardians.create');
-    }
-
-    public static function canView(Model $record): bool
-    {
-        return $record instanceof Guardian
-            && Gate::allows('guardians.view')
-            && static::belongsToAllowedCenter($record);
-    }
-
-    public static function canEdit(Model $record): bool
-    {
-        return $record instanceof Guardian
-            && Gate::allows('guardians.update')
-            && static::belongsToAllowedCenter($record);
-    }
-
-    public static function canDelete(Model $record): bool
-    {
-        return $record instanceof Guardian
-            && Gate::allows('guardians.delete')
-            && static::belongsToAllowedCenter($record);
-    }
-
-    public static function canDeleteAny(): bool
-    {
-        return Gate::allows('guardians.delete');
     }
 }

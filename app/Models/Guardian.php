@@ -16,9 +16,11 @@ class Guardian extends Model
         'full_name',
         'phone',
         'email',
+        'national_id',
+        'occupation',
         'address',
-        'relationship',
         'is_active',
+        'notes',
     ];
 
     protected function casts(): array
@@ -44,14 +46,12 @@ public function students(): BelongsToMany
 {
     return $this->belongsToMany(
         Student::class,
-        'guardian_student'
-    )
-        ->withPivot([
-            'relationship',
-            'is_primary',
-            'can_receive_notifications',
-            'can_pickup',
-        ])
-        ->withTimestamps();
+        'guardian_student',
+        'guardian_id',
+        'student_id',
+    )->withPivot([
+        'center_id',
+        'relationship',
+    ]);
 }
 }

@@ -17,36 +17,50 @@ class CenterHierarchy
      * لا نستبعد المراكز المعلقة هنا؛ لأن المدير يحتاج إلى
      * رؤيتها حتى يتمكن من مراجعة طلبات الاعتماد.
      */
-   public function accessibleIds(int $centerId): array
-{
+    public function accessibleIds(int $centerId): array
+    {
+
+   // التحقق من وجود المركز قبل البحث عن المراكز التابعة له.
     if (! Center::query()->whereKey($centerId)->exists()) {
         return [];
     }
 
-    $allIds = [];
-    $pendingIds = [$centerId];
+        $allIds = [];
+        $pendingIds = [$centerId];
 
-    while (! empty($pendingIds)) {
-        $currentBatch = array_values(array_diff(
-            array_unique(array_map('intval', $pendingIds)),
-            $allIds,
-        ));
+        while ($pendingIds !== []) {
+            $currentBatch = array_values(array_unique(
+                array_map('intval', $pendingIds)
+            ));
 
-        if (empty($currentBatch)) {
-            break;
+            $pendingIds = [];
+
+            foreach ($currentBatch as $id) {
+                if (in_array($id, $allIds, true)) {
+                    continue;
+                }
+
+                $allIds[] = $id;
+            }
+
+            if ($currentBatch === []) {
+                continue;
+            }
+
+            $children = Center::query()
+                ->whereIn('parent_center_id', $currentBatch)
+                ->pluck('id')
+                ->map(fn ($id): int => (int) $id)
+                ->all();
+
+            $pendingIds = array_values(array_diff(
+                $children,
+                $allIds,
+            ));
         }
 
-        $allIds = array_merge($allIds, $currentBatch);
-
-        $pendingIds = Center::query()
-            ->whereIn('parent_center_id', $currentBatch)
-            ->pluck('id')
-            ->map(fn ($id): int => (int) $id)
-            ->all();
+        return $allIds;
     }
-
-    return array_values(array_unique($allIds));
-}
 
     /**
      * إرجاع المراكز التي يستطيع المستخدم الوصول إليها
@@ -121,26 +135,66 @@ class CenterHierarchy
      * المراكز التي يديرها المستخدم مباشرة فقط.
      * تُستخدم عند اختيار مركز أب لإنشاء مركز فرعي.
      */
-  public function directlyManagedCenters(User $user): Collection
-{
-    if ($user->hasRole('super_admin')) {
+    public function directlyManagedCenters(User $user): Collection
+    {
+        if ($user->hasRole('super_admin')) {
+            return Center::query()
+                ->orderBy('name')
+                ->get();
+        }
+
+        $ids = $user->managedCenters()
+            ->pluck('centers.id')
+            ->map(fn ($id): int => (int) $id)
+            ->all();
+
+        if ($user->center_id !== null) {
+            $ids[] = (int) $user->center_id;
+        }
+
         return Center::query()
+            ->whereIn('id', array_values(array_unique($ids)))
             ->orderBy('name')
             ->get();
     }
-
-    $ids = $user->managedCenters()
-        ->pluck('centers.id')
-        ->map(fn ($id): int => (int) $id)
+    /**
+ * إرجاع المراكز التي يديرها المستخدم مباشرة.
+ */
+public function directlyManagedCenterIds(User $user): array
+{
+    return $this->directlyManagedCenters($user)
+        ->pluck('id')
+        ->map(fn ($id) => (int) $id)
         ->all();
+}
 
-    if ($user->center_id !== null) {
-        $ids[] = (int) $user->center_id;
+/**
+ * التحقق من أن المستخدم يدير المركز مباشرة.
+ */
+public function managesDirectly(
+    User $user,
+    int $centerId
+): bool {
+    return in_array(
+        $centerId,
+        $this->directlyManagedCenterIds($user),
+        true
+    );
+}
+public function activeAccessibleIdsForUser(User $user): array
+{
+    $accessibleIds = $this->accessibleIdsForUser($user);
+
+    if (empty($accessibleIds)) {
+        return [];
     }
 
     return Center::query()
-        ->whereIn('id', array_unique($ids))
-        ->orderBy('name')
-        ->get();
+        ->whereIn('id', $accessibleIds)
+        ->where('is_active', true)
+        ->where('approval_status', 'active')
+        ->pluck('id')
+        ->map(fn ($id) => (int) $id)
+        ->all();
 }
 }
