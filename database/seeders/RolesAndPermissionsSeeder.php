@@ -119,6 +119,12 @@ class RolesAndPermissionsSeeder extends Seeder
             'Create:CircleStudent',
             'Update:CircleStudent',
 
+            'ViewAny:StudentAssessment',
+            'View:StudentAssessment',
+            'Create:StudentAssessment',
+            'Update:StudentAssessment',
+            'Delete:StudentAssessment',
+
 
 
             // Attendance

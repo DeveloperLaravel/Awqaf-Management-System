@@ -1,22 +1,28 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Filament\Resources\Teachers;
 
 use App\Filament\Resources\Teachers\Pages;
 use App\Models\Center;
 use App\Models\Teacher;
 use App\Services\CenterHierarchy;
+use BackedEnum;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\TextInput;
 use Filament\Forms\Components\Toggle;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
+use Filament\Schemas\Components\Section;
 use Filament\Tables\Table;
 use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Validation\Rules\Password;
+use UnitEnum;
 
 class TeacherResource extends Resource
 {
@@ -28,17 +34,24 @@ class TeacherResource extends Resource
 
     protected static ?string $navigationLabel = 'المعلمين';
 
-    protected static string|\BackedEnum|null $navigationIcon = 'heroicon-o-academic-cap';
+    protected static string|BackedEnum|null $navigationIcon =
+        'heroicon-o-academic-cap';
 
-    protected static string|\UnitEnum|null $navigationGroup = 'إدارة التعليم';
+    protected static string|UnitEnum|null $navigationGroup =
+        'إدارة التعليم';
 
     protected static ?int $navigationSort = 4;
 
     public static function form(Schema $schema): Schema
     {
         return $schema->components([
-            \Filament\Schemas\Components\Section::make('البيانات الشخصية')
+
+            Section::make('البيانات الشخصية وحساب الدخول')
+                ->description(
+                    'البريد الإلكتروني المدخل هنا هو نفسه المستخدم لتسجيل الدخول إلى التطبيق.'
+                )
                 ->schema([
+
                     TextInput::make('full_name')
                         ->label('اسم المعلم')
                         ->required()
@@ -50,9 +63,31 @@ class TeacherResource extends Resource
                         ->maxLength(30),
 
                     TextInput::make('email')
-                        ->label('البريد الإلكتروني')
+                        ->label('البريد الإلكتروني وتسجيل الدخول')
                         ->email()
+                        ->required()
+                        ->unique(
+                            table: 'users',
+                            column: 'email',
+                            ignoreRecord: false
+                        )
+                        ->unique(
+                            table: 'teachers',
+                            column: 'email',
+                            ignoreRecord: true
+                        )
                         ->maxLength(255),
+
+                    TextInput::make('account_password')
+                        ->label('كلمة المرور')
+                        ->password()
+                        ->revealable()
+                        ->required(
+                            fn (string $operation): bool =>
+                                $operation === 'create'
+                        )
+                        ->rule(Password::min(8))
+                        ->dehydrated(true),
 
                     TextInput::make('qualification')
                         ->label('المؤهل العلمي')
@@ -68,12 +103,15 @@ class TeacherResource extends Resource
                 ])
                 ->columns(2),
 
-            \Filament\Schemas\Components\Section::make('المراكز')
-                ->description('حدد المركز الأساسي والمراكز الأخرى التي يعمل بها المعلم.')
+            Section::make('المراكز')
+                ->description(
+                    'حدد المركز الأساسي والمراكز الأخرى التي يعمل بها المعلم.'
+                )
                 ->schema([
+
                     Select::make('center_id')
                         ->label('المركز الأساسي')
-                        ->options(fn () => self::availableCenters())
+                        ->options(fn (): array => self::availableCenters())
                         ->searchable()
                         ->preload()
                         ->required(),
@@ -108,6 +146,7 @@ class TeacherResource extends Resource
     {
         return $table
             ->columns([
+
                 TextColumn::make('full_name')
                     ->label('اسم المعلم')
                     ->searchable()
@@ -128,6 +167,10 @@ class TeacherResource extends Resource
                     ->label('البريد الإلكتروني')
                     ->searchable(),
 
+                TextColumn::make('user.email')
+                    ->label('حساب الدخول')
+                    ->placeholder('لا يوجد حساب'),
+
                 TextColumn::make('qualification')
                     ->label('المؤهل'),
 
@@ -136,9 +179,10 @@ class TeacherResource extends Resource
                     ->boolean(),
             ])
             ->filters([
+
                 SelectFilter::make('center_id')
                     ->label('المركز الأساسي')
-                    ->options(fn () => self::availableCenters()),
+                    ->options(fn (): array => self::availableCenters()),
 
                 SelectFilter::make('is_active')
                     ->label('الحالة')
@@ -157,7 +201,8 @@ class TeacherResource extends Resource
 
     public static function getEloquentQuery(): Builder
     {
-        $query = parent::getEloquentQuery();
+        $query = parent::getEloquentQuery()
+            ->with(['center', 'centers', 'user']);
 
         $user = auth()->user();
 
@@ -172,10 +217,15 @@ class TeacherResource extends Resource
         $centerIds = self::accessibleCenterIds();
 
         return $query->where(function (Builder $query) use ($centerIds) {
+
             $query->whereIn('center_id', $centerIds)
+
                 ->orWhereHas('centers', function (Builder $query) use ($centerIds) {
+
                     $query->whereIn('centers.id', $centerIds);
+
                 });
+
         });
     }
 

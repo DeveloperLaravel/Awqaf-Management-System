@@ -23,18 +23,18 @@ class EnsureCenterIsApproved
             return $next($request);
         }
 
-        // المدير العام لا يخضع لاعتماد مركز محدد.
+        // مدير النظام لا يحتاج إلى مركز مرتبط بحسابه.
         if ($user->hasRole('super_admin')) {
             return $next($request);
         }
 
-        // المراكز المرتبطة مباشرة بالمستخدم عبر center_user.
+        // المراكز المرتبطة مباشرة بالمستخدم.
         $centerIds = $user->managedCenters()
             ->pluck('centers.id')
             ->map(fn ($id): int => (int) $id)
             ->all();
 
-        // دعم الحسابات القديمة التي تستخدم users.center_id.
+        // دعم الحسابات القديمة.
         if ($user->center_id !== null) {
             $centerIds[] = (int) $user->center_id;
         }
@@ -48,23 +48,23 @@ class EnsureCenterIsApproved
             );
         }
 
-        // يجب أن يوجد مركز واحد على الأقل معتمد ومفعّل.
-        $hasApprovedCenter = Center::query()
+        // يجب وجود مركز واحد على الأقل معتمد ومفعّل.
+        $approvedCenter = Center::query()
             ->whereIn('id', $centerIds)
             ->where('is_active', true)
             ->where('approval_status', 'active')
-            ->whereNotNull('approved_at')
-            ->exists();
+            ->first();
 
         Log::info('Center approval middleware diagnostic', [
             'user_id' => $user->id,
+            'roles' => $user->getRoleNames()->toArray(),
             'legacy_center_id' => $user->center_id,
             'managed_center_ids' => $centerIds,
-            'has_approved_center' => $hasApprovedCenter,
+            'approved_center_id' => $approvedCenter?->id,
             'path' => $request->path(),
         ]);
 
-        if (! $hasApprovedCenter) {
+        if (! $approvedCenter) {
             abort(
                 403,
                 'لا يوجد حسابك مرتبطًا بمركز معتمد ومفعّل. يرجى مراجعة إدارة النظام.'

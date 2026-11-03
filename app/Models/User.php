@@ -67,6 +67,7 @@ class User extends Authenticatable implements FilamentUser
             'super_admin',
             'center_admin',
             'center_manager',
+            'teacher',
         ]);
     }
 }
