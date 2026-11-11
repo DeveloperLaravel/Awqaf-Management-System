@@ -19,78 +19,56 @@ class StudentPolicy
         return null;
     }
 
-    private function hasPermission(User $user, array $permissions): bool
+    private function isCenterManager(User $user): bool
     {
-        return $user->hasAnyPermission($permissions);
+        return $user->hasRole('center_manager');
+    }
+
+    private function hasPermission(User $user, string $permission): bool
+    {
+        return $user->hasPermissionTo($permission, 'web');
     }
 
     public function viewAny(User $user): bool
     {
-        return $user->hasRole('center_manager')
+        return $this->isCenterManager($user)
             && StudentCenterAccess::branchIdsFor($user) !== []
-            && $this->hasPermission($user, [
-                'students.view',
-                'ViewAny:Student',
-            ]);
+            && $this->hasPermission($user, 'ViewAny:Student');
     }
 
     public function view(User $user, Student $student): bool
     {
-        return $user->hasRole('center_manager')
-            && StudentCenterAccess::canAccessBranch(
-                $user,
-                $student->center_id
-            )
-            && $this->hasPermission($user, [
-                'students.view',
-                'View:Student',
-            ]);
+        return $this->isCenterManager($user)
+            && StudentCenterAccess::canAccessBranch($user, $student->center_id)
+            && $this->hasPermission($user, 'View:Student');
     }
 
     public function create(User $user): bool
     {
-        return $user->hasRole('center_manager')
+        return $this->isCenterManager($user)
             && StudentCenterAccess::branchIdsFor($user) !== []
-            && $this->hasPermission($user, [
-                'students.create',
-                'Create:Student',
-            ]);
+            && $this->hasPermission($user, 'Create:Student');
     }
 
     public function update(User $user, Student $student): bool
     {
-        return $user->hasRole('center_manager')
-            && StudentCenterAccess::canAccessBranch(
-                $user,
-                $student->center_id
-            )
-            && $this->hasPermission($user, [
-                'students.update',
-                'Update:Student',
-            ]);
+        return $this->isCenterManager($user)
+            && StudentCenterAccess::canAccessBranch($user, $student->center_id)
+            && $this->hasPermission($user, 'Update:Student');
     }
 
     public function delete(User $user, Student $student): bool
     {
-        return $user->hasRole('center_manager')
-            && StudentCenterAccess::canAccessBranch(
-                $user,
-                $student->center_id
-            )
-            && $this->hasPermission($user, [
-                'students.delete',
-                'Delete:Student',
-            ]);
+        return $this->isCenterManager($user)
+            && StudentCenterAccess::canAccessBranch($user, $student->center_id)
+            && $this->hasPermission($user, 'Delete:Student');
     }
 
     public function deleteAny(User $user): bool
     {
-        return $user->hasRole('center_manager')
+        return $this->isCenterManager($user)
             && StudentCenterAccess::branchIdsFor($user) !== []
-            && $this->hasPermission($user, [
-                'students.delete',
-                'DeleteAny:Student',
-            ]);
+            && $this->hasPermission($user, 'Delete:Student');
     }
 
     public function restore(User $user, Student $student): bool

@@ -128,9 +128,9 @@ class CenterResource extends Resource
         }
 
         // من لديه صلاحية العرض الشامل يرى جميع المراكز.
-        if ($user->can('ViewAll:Center')) {
-            return self::applyHierarchyOrder($query);
-        }
+     if ($user->hasPermissionTo('ViewAll:Center', 'web')) {
+    return self::applyHierarchyOrder($query);
+}
 
         // التحقق من صلاحية عرض قائمة المراكز.
         if (! Gate::forUser($user)->allows('viewAny', Center::class)) {

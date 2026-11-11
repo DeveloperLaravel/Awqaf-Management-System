@@ -181,6 +181,29 @@ public function managesDirectly(
         true
     );
 }
+
+
+
+/**
+ * التحقق من أن المستخدم يستطيع إنشاء فرع تحت المركز المحدد.
+ *
+ * يشترط أن يكون المركز الأب ضمن المراكز التي يديرها
+ * المستخدم مباشرة، وليس مجرد مركز يستطيع الوصول إليه.
+ */
+public function canCreateChildUnder(
+    User $user,
+    Center $parent
+): bool {
+    if (! $parent->exists) {
+        return false;
+    }
+
+    return $this->managesDirectly(
+        $user,
+        (int) $parent->id
+    );
+}
+
 public function activeAccessibleIdsForUser(User $user): array
 {
     $accessibleIds = $this->accessibleIdsForUser($user);

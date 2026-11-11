@@ -1,71 +1,49 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Filament\Widgets;
 
+use App\Concerns\HasDashboardCenterScope;
 use App\Models\AttendanceRecord;
 use App\Models\Center;
 use App\Models\Circle;
 use App\Models\Payment;
 use App\Models\Student;
 use App\Models\Teacher;
-use App\Support\CenterQueryScope;
 use Carbon\CarbonImmutable;
 use Filament\Widgets\StatsOverviewWidget as BaseWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Gate;
 
 class CenterOverview extends BaseWidget
 {
+    use HasDashboardCenterScope;
+
     protected static ?int $sort = 1;
 
     protected function getStats(): array
     {
-        $user = Auth::user();
-
-        if (! $user) {
-            return [];
-        }
-
-        $students = $this->scope(Student::query());
-        $teachers = $this->scope(Teacher::query());
-        $circles = $this->scope(Circle::query());
-
-        $attendance = $this->scope(
-            AttendanceRecord::query()
-        );
-
-        $payments = $this->scope(Payment::query());
-
         $today = CarbonImmutable::today();
 
-        $monthStart = $today->startOfMonth();
-        $monthEnd = $today->endOfMonth();
+        $centers = Center::query()
+            ->whereIn('id', $this->dashboardCenterIds());
 
-        // عدد المراكز: مدير النظام يرى الكل،
-        // ومدير المركز يرى مركزه فقط.
-        $centersQuery = Center::query();
+        $students = $this->dashboardQuery(Student::class);
+        $teachers = $this->dashboardQuery(Teacher::class);
+        $circles = $this->dashboardQuery(Circle::class);
+        $attendance = $this->dashboardQuery(AttendanceRecord::class);
+        $payments = $this->dashboardQuery(Payment::class);
 
-        if (! Gate::allows('centers.view_all')) {
-            if (! $user->center_id) {
-                $centersQuery->whereRaw('1 = 0');
-            } else {
-                $centersQuery->whereKey($user->center_id);
-            }
-        }
+        $centerCount = (clone $centers)->count();
 
-        $activeStudents = (clone $students)
-            ->where('is_active', true)
-            ->count();
+        $studentCount = (clone $students)
+            ->where('is_active', true)->count();
 
-        $activeTeachers = (clone $teachers)
-            ->where('is_active', true)
-            ->count();
+        $teacherCount = (clone $teachers)
+            ->where('is_active', true)->count();
 
-        $activeCircles = (clone $circles)
-            ->where('is_active', true)
-            ->count();
+        $circleCount = (clone $circles)
+            ->where('is_active', true)->count();
 
         $todayAttendance = (clone $attendance)
             ->whereDate('attendance_date', $today)
@@ -73,68 +51,44 @@ class CenterOverview extends BaseWidget
 
         $monthlyPayments = (clone $payments)
             ->whereBetween('paid_at', [
-                $monthStart->toDateString(),
-                $monthEnd->toDateString(),
+                $today->startOfMonth()->toDateString(),
+                $today->endOfMonth()->toDateString(),
             ])
             ->sum('amount');
 
         return [
-            Stat::make(
-               'إجمالي المراكز',
-                Center::count()
-            )
-                ->description('عدد مراكز التحفيظ المسجلة')
-                ->descriptionIcon('heroicon-m-building-library')
-                ->color('primary')
-                ->chart([2, 4, 3, 6, 5, 8, Center::count()]),
-  Stat::make(
-                'المراكز غير النشطة',
-                Center::where('is_active', false)->count()
-            ) ->description('المراكز المتوقفة')
-                ->descriptionIcon('heroicon-m-pause-circle')
-                ->color('danger'),
+            Stat::make('المراكز التابعة', number_format($centerCount))
+                ->description('المراكز ضمن نطاق صلاحياتك')
+                ->descriptionIcon('heroicon-o-building-office-2')
+                ->color('primary'),
 
-          
-            Stat::make(
-                'المعلمون النشطون',
-                number_format($activeTeachers)
-            )
-                ->description('المعلمون بحالة نشطة')
+            Stat::make('الطلاب النشطون', number_format($studentCount))
+                ->description('إجمالي الطلاب النشطين')
+                ->descriptionIcon('heroicon-o-academic-cap')
+                ->color('success'),
+
+            Stat::make('المعلمون النشطون', number_format($teacherCount))
+                ->description('المعلمون المسجلون')
                 ->descriptionIcon('heroicon-o-user-group')
                 ->color('info'),
 
-            Stat::make(
-                'الحلقات النشطة',
-                number_format($activeCircles)
-            )
-                ->description('الحلقات المتاحة')
+            Stat::make('الحلقات النشطة', number_format($circleCount))
+                ->description('الحلقات التعليمية')
                 ->descriptionIcon('heroicon-o-book-open')
                 ->color('warning'),
 
-            Stat::make(
-                'سجلات الحضور اليوم',
-                number_format($todayAttendance)
-            )
-                ->description('جميع حالات الحضور المسجلة اليوم')
+            Stat::make('حضور اليوم', number_format($todayAttendance))
+                ->description('سجلات الحضور اليوم')
                 ->descriptionIcon('heroicon-o-calendar-days')
                 ->color('success'),
 
             Stat::make(
-                'مدفوعات الشهر',
-                number_format((float) $monthlyPayments, 2)
-                    . ' د.ل'
+                'تحصيل الشهر',
+                number_format((float) $monthlyPayments, 2) . ' د.ل'
             )
-                ->description('إجمالي المبالغ المسجلة هذا الشهر')
+                ->description('إجمالي المدفوعات المسجلة')
                 ->descriptionIcon('heroicon-o-banknotes')
                 ->color('primary'),
         ];
-    }
-
-    /**
-     * تطبيق نطاق المركز على الاستعلام.
-     */
-    private function scope(Builder $query): Builder
-    {
-        return CenterQueryScope::apply($query);
     }
 }

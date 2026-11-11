@@ -16,9 +16,7 @@ class EditCircle extends EditRecord
     protected static string $resource = CircleResource::class;
 
     /**
-     * التحقق من صلاحية الوصول إلى صفحة التعديل.
-     *
-     * يعتمد على CirclePolicy للتحقق من صلاحية العرض.
+     * حماية صفحة التعديل.
      */
     protected function authorizeAccess(): void
     {
@@ -26,44 +24,33 @@ class EditCircle extends EditRecord
 
         $record = $this->getRecord();
 
-        abort_unless(
-            $record instanceof Circle,
-            404
-        );
+        abort_unless($record instanceof Circle, 404);
 
-        Gate::authorize('view', $record);
-    }
-
-    /**
-     * التحقق من صلاحية تعديل الحلقة قبل الحفظ.
-     */
-    protected function authorizeRecordUpdate(Circle $record): void
-    {
+        // لا يكفي امتلاك صلاحية العرض لفتح صفحة التعديل.
         Gate::authorize('update', $record);
     }
 
     /**
-     * التحقق من البيانات قبل حفظ التعديلات.
+     * التحقق قبل حفظ التعديلات.
      */
-    protected function mutateFormDataBeforeSave(array $data): array
-    {
-        /** @var Circle $record */
-        $record = $this->getRecord();
+   protected function mutateFormDataBeforeSave(array $data): array
+{
+    $user = auth()->user();
 
-        // التأكد من أن المستخدم يملك صلاحية تعديل هذه الحلقة.
-        $this->authorizeRecordUpdate($record);
+    abort_unless($user, 403);
 
-        $user = auth()->user();
+    $record = $this->getRecord();
 
-        abort_unless($user, 403);
+    Gate::authorize('update', $record);
 
-        // التحقق من المركز والمعلم قبل الحفظ.
-        app(CircleAssignmentValidator::class)
-            ->validate($user, $data);
+    app(CircleAssignmentValidator::class)->validate(
+        $user,
+        $data,
+        $record
+    );
 
-        return $data;
-    }
-
+    return $data;
+}
     /**
      * زر حذف الحلقة.
      */

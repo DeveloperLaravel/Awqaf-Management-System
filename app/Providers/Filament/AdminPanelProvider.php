@@ -72,15 +72,29 @@ class AdminPanelProvider extends PanelProvider
                 for: 'App\\Filament\\Pages',
             )
 
-            ->pages([
-                Dashboard::class,
-            ])
+           ->pages([
+    \App\Filament\Pages\Dashboard::class,
+])
 
-            ->widgets([
-                CenterOverview::class,
-                AttendanceChart::class,
-                 \App\Filament\Widgets\StudentsOverview::class,
-            ])
+   ->widgets([
+    // الإحصائيات الرئيسية
+    \App\Filament\Widgets\CenterOverview::class,
+
+    // إحصائيات الطلاب والمعلمين والحلقات
+    \App\Filament\Widgets\StudentsOverview::class,
+    \App\Filament\Widgets\TeachersOverview::class,
+    \App\Filament\Widgets\CirclesOverview::class,
+
+    // الرسوم البيانية
+    \App\Filament\Widgets\AttendanceChart::class,
+    \App\Filament\Widgets\MemorizationChart::class,
+    \App\Filament\Widgets\PaymentsOverview::class,
+
+    // الجداول
+    \App\Filament\Widgets\RecentAttendance::class,
+    \App\Filament\Widgets\RecentStudents::class,
+    \App\Filament\Widgets\PendingCenters::class,
+])
 
             ->middleware([
                 EncryptCookies::class,

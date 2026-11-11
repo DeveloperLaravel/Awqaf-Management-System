@@ -34,7 +34,7 @@ class ListCenters extends ListRecords
                 ),
 
             // 2. إنشاء فرع للمستخدم الذي يملك صلاحية الإنشاء.
-            Action::make('createChild')
+            Action::make('CreateChild:Center')
                 ->label('إنشاء فرع')
                 ->icon('heroicon-o-plus-circle')
                 ->color('success')

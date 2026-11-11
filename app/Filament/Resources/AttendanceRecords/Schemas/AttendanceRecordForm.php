@@ -13,124 +13,134 @@ use App\Services\CenterHierarchy;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
-use Filament\Forms\Get;
-use Filament\Schemas\Components\Utilities\Get as UtilitiesGet;
+use Filament\Schemas\Components\Utilities\Get;
+use Filament\Schemas\Components\Utilities\Set;
 use Filament\Schemas\Schema;
 use Illuminate\Database\Eloquent\Builder;
-
+use Filament\Actions\DeleteAction;
+use Filament\Actions\EditAction;
+use Filament\Tables\Columns\TextColumn;
+use Filament\Tables\Filters\SelectFilter;
+use App\Filament\Resources\AttendanceRecords\AttendanceRecordResource;
 class AttendanceRecordForm
 {
     public static function configure(Schema $schema): Schema
     {
         return $schema->components([
-            Select::make('circle_id')
-                ->label('الحلقة')
-                ->options(function (): array {
-                    $user = request()->user();
+            Select::make('center_id')
+            ->label('المركز')
+->options(fn (): array => AttendanceRecordResource::centerOptions())
+->default(fn (): ?int => AttendanceRecordResource::defaultCenterId())
+            ->searchable()
+            ->preload()
+            ->live()
+            ->required()
+            ->afterStateUpdated(function (Set $set): void {
+                $set('student_id', null);
+                $set('circle_id', null);
+            }),
 
-                    if (! $user instanceof User) {
-                        return [];
-                    }
+        Select::make('circle_id')
+            ->label('الحلقة')
+            ->options(function (Get $get): array {
+                $centerId = $get('center_id');
 
-                    $query = Circle::query()
-                        ->where('is_active', true);
+                if (! $centerId) {
+                    return [];
+                }
 
-                    if (! $user->hasRole('super_admin')) {
-                        $teacher = Teacher::query()
-                            ->where('user_id', $user->id)
-                            ->first();
+                return AttendanceRecordResource::allowedCirclesQuery()
+                    ->where('center_id', $centerId)
+                    ->orderBy('name')
+                    ->pluck('name', 'id')
+                    ->all();
+            })
+            ->searchable()
+            ->preload()
+            ->live()
+            ->required()
+            ->disabled(fn (Get $get): bool => ! $get('center_id'))
+            ->afterStateUpdated(function (Set $set): void {
+                $set('student_id', null);
+            }),
 
-                        if ($teacher) {
-                            $query->where('teacher_id', $teacher->id);
-                        } else {
-                            $centerIds = app(CenterHierarchy::class)
-                                ->accessibleIdsForUser($user);
+        Select::make('student_id')
+            ->label('الطالب')
+            ->options(function (Get $get): array {
+                $circleId = $get('circle_id');
 
-                            $query->whereIn('center_id', $centerIds);
-                        }
-                    }
+                if (! $circleId) {
+                    return [];
+                }
 
-                    return $query
-                        ->orderBy('name')
-                        ->pluck('name', 'id')
-                        ->all();
-                })
-                ->searchable()
-                ->live()
-                ->required(),
+                $circle = AttendanceRecordResource::allowedCirclesQuery()
+                    ->whereKey($circleId)
+                    ->first();
 
-            Select::make('student_id')
-                ->label('الطالب')
-                ->options(function (UtilitiesGet $get): array {
-                    $circleId = $get('circle_id');
+                if (! $circle) {
+                    return [];
+                }
 
-                    if (! $circleId) {
-                        return [];
-                    }
+                return $circle->students()
+                    ->wherePivotNull('left_at')
+                    ->orderBy('full_name')
+                    ->pluck('students.full_name', 'students.id')
+                    ->all();
+            })
+            ->searchable()
+            ->preload()
+            ->required()
+            ->disabled(fn (Get $get): bool => ! $get('circle_id')),
 
-                    $circle = Circle::query()->find($circleId);
+        DatePicker::make('attendance_date')
+            ->label('تاريخ الحضور')
+            ->default(now()->toDateString())
+            ->required()
+            ->native(false),
 
-                    if (! $circle || ! self::canSelectCircle($circle)) {
-                        return [];
-                    }
+        Select::make('status')
+            ->label('حالة الحضور')
+            ->options([
+                AttendanceRecord::STATUS_PRESENT => 'حاضر',
+                AttendanceRecord::STATUS_ABSENT => 'غائب',
+                AttendanceRecord::STATUS_LATE => 'متأخر',
+                AttendanceRecord::STATUS_EXCUSED => 'غياب بعذر',
+            ])
+            ->default(AttendanceRecord::STATUS_PRESENT)
+            ->required()
+            ->native(false),
 
-                    return $circle->students()
-                        ->wherePivotNull('left_at')
-                        ->orderBy('full_name')
-                        ->pluck('students.full_name', 'students.id')
-                        ->all();
-                })
-                ->searchable()
-                ->required()
-                ->disabled(fn (UtilitiesGet $get): bool => ! $get('circle_id')),
-
-            DatePicker::make('attendance_date')
-                ->label('تاريخ الحضور')
-                ->default(now()->toDateString())
-                ->required(),
-
-            Select::make('status')
-                ->label('حالة الطالب')
-                ->options([
-                    AttendanceRecord::STATUS_PRESENT => 'حاضر',
-                    AttendanceRecord::STATUS_ABSENT => 'غائب',
-                    AttendanceRecord::STATUS_LATE => 'متأخر',
-                    AttendanceRecord::STATUS_EXCUSED => 'غائب بعذر',
-                ])
-                ->default(AttendanceRecord::STATUS_PRESENT)
-                ->required(),
-
-            Textarea::make('notes')
-                ->label('ملاحظات')
-                ->rows(3)
-                ->columnSpanFull()
-                ->nullable(),
-        ]);
+        Textarea::make('notes')
+            ->label('ملاحظات')
+            ->rows(3)
+            ->columnSpanFull()
+            ->nullable(),
+    ]);
     }
 
-    private static function canSelectCircle(Circle $circle): bool
-    {
-        $user = request()->user();
+//     private static function canSelectCircle(Circle $circle): bool
+//     {
+//         $user = request()->user();
 
-        if (! $user instanceof User) {
-            return false;
-        }
+//         if (! $user instanceof User) {
+//             return false;
+//         }
 
-        if ($user->hasRole('super_admin')) {
-            return true;
-        }
+//         if ($user->hasRole('super_admin')) {
+//             return true;
+//         }
 
-        $teacher = Teacher::query()
-            ->where('user_id', $user->id)
-            ->first();
+//         $teacher = Teacher::query()
+//             ->where('user_id', $user->id)
+//             ->first();
 
-        if ($teacher) {
-            return (int) $circle->teacher_id === (int) $teacher->id;
-        }
+//         if ($teacher) {
+//             return (int) $circle->teacher_id === (int) $teacher->id;
+//         }
 
-        return app(CenterHierarchy::class)->canUserAccess(
-            $user,
-            (int) $circle->center_id
-        );
-    }
+//         return app(CenterHierarchy::class)->canUserAccess(
+//             $user,
+//             (int) $circle->center_id
+//         );
+//     }
 }

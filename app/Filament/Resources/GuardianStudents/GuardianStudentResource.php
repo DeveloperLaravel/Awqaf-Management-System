@@ -9,8 +9,12 @@ use App\Models\GuardianStudent;
 use Filament\Resources\Resource;
 use Filament\Schemas\Schema;
 use Filament\Tables\Table;
+use Illuminate\Database\Eloquent\Builder;
+use App\Services\CenterHierarchy;
+use BezhanSalleh\FilamentShield\Contracts\HasShieldPermissions;
 
-class GuardianStudentResource extends Resource
+
+class GuardianStudentResource extends Resource implements HasShieldPermissions
 {
     protected static ?string $model = GuardianStudent::class;
 
@@ -28,6 +32,18 @@ class GuardianStudentResource extends Resource
 
     protected static ?int $navigationSort = 5;
 
+
+    public static function getPermissionPrefixes(): array
+{
+    return [
+        'view',
+        'view_any',
+        'create',
+        'update',
+        'delete',
+        'delete_any',
+    ];
+}
     public static function form(Schema $schema): Schema
     {
         return \App\Filament\Resources\GuardianStudents\Schemas\GuardianStudentForm::configure($schema);
@@ -37,6 +53,21 @@ class GuardianStudentResource extends Resource
     {
         return \App\Filament\Resources\GuardianStudents\Tables\GuardianStudentsTable::configure($table);
     }
+
+    public static function getEloquentQuery(): Builder
+{
+    $user = auth()->user();
+
+    if (! $user) {
+        return parent::getEloquentQuery()->whereRaw('1 = 0');
+    }
+
+    $centerIds = app(CenterHierarchy::class)
+        ->accessibleIdsForUser($user);
+
+    return parent::getEloquentQuery()
+        ->whereIn('center_id', $centerIds);
+}
 
     public static function getPages(): array
     {

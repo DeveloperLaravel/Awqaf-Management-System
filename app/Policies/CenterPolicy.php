@@ -31,35 +31,59 @@ class CenterPolicy
     }
 
     /**
-     * السماح بفتح صفحة الإنشاء.
+     * السماح بفتح صفحة إنشاء مركز.
+     *
+     * super_admin: إنشاء مركز رئيسي.
+     * center_admin / center_manager: إنشاء فرع.
      */
-   public function create(User $user): bool
-{
-    if ($user->hasRole('super_admin')) {
-        return $user->can('Create:Center');
-    }
+    public function create(User $user): bool
+    {
+        // إنشاء المراكز الرئيسية للمدير العام فقط.
+        if ($user->hasRole('super_admin')) {
+            return $user->hasPermissionTo('Create:Center', 'web');
+        }
 
-    return $user->hasAnyRole(['center_admin', 'center_manager'])
-        && $user->can('CreateChild:Center')
-        && app(CenterHierarchy::class)
-            ->directlyManagedCenters($user)
-            ->isNotEmpty();
-}
+        // إنشاء الفروع للمديرين الذين لديهم مراكز يديرونها مباشرة.
+        if (! $user->hasAnyRole([
+            'center_admin',
+            'center_manager',
+        ])) {
+            return false;
+        }
+
+        return $user->hasPermissionTo('CreateChild:Center', 'web')
+            && app(CenterHierarchy::class)
+                ->directlyManagedCenters($user)
+                ->isNotEmpty();
+    }
 
     /**
      * إنشاء فرع تحت مركز محدد.
      */
-   public function createChild(User $user, Center $parent): bool
-{
-    if ($user->hasRole('super_admin')) {
-        return false;
-    }
+    public function createChild(
+        User $user,
+        Center $parent
+    ): bool {
+        // المدير العام لا ينشئ فروعاً.
+        if ($user->hasRole('super_admin')) {
+            return false;
+        }
 
-    return $user->hasAnyRole(['center_admin', 'center_manager'])
-        && $user->can('CreateChild:Center')
-        && app(CenterHierarchy::class)
+        if (! $user->hasAnyRole([
+            'center_admin',
+            'center_manager',
+        ])) {
+            return false;
+        }
+
+        if (! $user->hasPermissionTo('CreateChild:Center', 'web')) {
+            return false;
+        }
+
+        // يجب أن يكون المركز الأب تحت إدارة المستخدم مباشرة.
+        return app(CenterHierarchy::class)
             ->canCreateChildUnder($user, $parent);
-}
+    }
 
     public function update(User $user, Center $center): bool
     {
@@ -117,31 +141,27 @@ class CenterPolicy
     }
 
     /**
-     * موافقة المركز الأب على طلب الفرع.
+     * موافقة مدير المركز الأب على طلب الفرع.
      */
     public function approveChild(
         User $user,
         Center $center
     ): bool {
         if (
-            $center->parent_center_id === null ||
-            $center->approval_status !== 'pending_parent_approval'
+            $center->parent_center_id === null
+            || $center->approval_status !== 'pending_parent_approval'
         ) {
             return false;
         }
 
-        if (! $user->hasPermissionTo(
-            'ApproveChild:Center',
-            'web'
-        )) {
+        if (! $user->hasPermissionTo('ApproveChild:Center', 'web')) {
             return false;
         }
 
-        return app(CenterHierarchy::class)
-            ->managesDirectly(
-                $user,
-                (int) $center->parent_center_id
-            );
+        return app(CenterHierarchy::class)->managesDirectly(
+            $user,
+            (int) $center->parent_center_id
+        );
     }
 
     /**
@@ -152,25 +172,21 @@ class CenterPolicy
         Center $center
     ): bool {
         return $user->hasRole('super_admin')
-            && $user->hasPermissionTo(
-                'ApproveFinal:Center',
-                'web'
-            )
+            && $user->hasPermissionTo('ApproveFinal:Center', 'web')
             && $center->approval_status === 'pending_super_admin_approval'
             && $center->parent_approved_at !== null;
     }
 
     /**
-     * التحقق من نطاق الوصول.
+     * التحقق من إمكانية الوصول إلى المركز.
      */
     private function canAccess(
         User $user,
         Center $center
     ): bool {
-        return app(CenterHierarchy::class)
-            ->canUserAccess(
-                $user,
-                (int) $center->id
-            );
+        return app(CenterHierarchy::class)->canUserAccess(
+            $user,
+            (int) $center->id
+        );
     }
 }

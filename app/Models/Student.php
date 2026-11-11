@@ -4,6 +4,10 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use App\Models\User;
+use App\Models\AttendanceRecord;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 class Student extends Model
 {
      protected $fillable = [
@@ -27,7 +31,10 @@ class Student extends Model
             'is_active' => 'boolean',
         ];
     }
-
+public function user(): BelongsTo
+{
+    return $this->belongsTo(User::class);
+}
     public function center(): BelongsTo
     {
         return $this->belongsTo(Center::class);
@@ -54,7 +61,10 @@ public function circles(): BelongsToMany
 {
     return $this->belongsToMany(
         Circle::class,
-        'circle_student'
+        'circle_student',
+        'student_id',
+        'circle_id',
+       
     )
         ->withPivot(['center_id', 'joined_at', 'left_at'])
         ->withTimestamps();
@@ -66,4 +76,10 @@ public function activeCircle()
     return $this->circles()
         ->wherePivotNull('left_at');
 }
+
+public function attendanceRecords(): HasMany
+{
+    return $this->hasMany(AttendanceRecord::class, 'student_id');
+}
+
 }

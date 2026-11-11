@@ -1,68 +1,62 @@
 <?php
 
+declare(strict_types=1);
+
 namespace App\Filament\Widgets;
 
+use App\Concerns\HasDashboardCenterScope;
 use App\Models\Student;
-use Filament\Widgets\StatsOverviewWidget;
+use Carbon\CarbonImmutable;
+use Filament\Widgets\StatsOverviewWidget as BaseWidget;
 use Filament\Widgets\StatsOverviewWidget\Stat;
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\Gate;
 
-class StudentsOverview extends StatsOverviewWidget
+class StudentsOverview extends BaseWidget
 {
+    use HasDashboardCenterScope;
+
+    protected static ?int $sort = 2;
+
     protected function getStats(): array
     {
-        $user = Auth::user();
+        $students = $this->dashboardQuery(Student::class);
 
-        // منع عرض أي إحصائيات دون مستخدم مسجل.
-        if (! $user) {
-            return [];
-        }
+        $total = (clone $students)->count();
 
-        $query = Student::query();
-
-        // عزل الإحصائيات حسب صلاحيات المستخدم.
-        if (! Gate::allows('centers.view_all')) {
-            if (! $user->center_id) {
-                return [
-                    Stat::make('إجمالي الطلاب', 0)
-                        ->description('لا يوجد مركز مرتبط بحسابك')
-                        ->color('gray'),
-                ];
-            }
-
-            $query->where(
-                'center_id',
-                $user->center_id
-            );
-        }
-
-        $total = (clone $query)->count();
-
-        $active = (clone $query)
+        $active = (clone $students)
             ->where('is_active', true)
             ->count();
 
-        $inactive = (clone $query)
+        $inactive = (clone $students)
             ->where('is_active', false)
             ->count();
 
+        $newThisMonth = (clone $students)
+            ->whereBetween('created_at', [
+                CarbonImmutable::now()->startOfMonth(),
+                CarbonImmutable::now()->endOfMonth(),
+            ])
+            ->count();
+
         return [
-            Stat::make('إجمالي الطلاب', $total)
+            Stat::make('إجمالي الطلاب', number_format($total))
                 ->description('جميع الطلاب المسجلين')
-                ->descriptionIcon('heroicon-m-users')
+                ->descriptionIcon('heroicon-o-users')
                 ->color('primary'),
 
-            Stat::make('الطلاب النشطون', $active)
-                ->description('الطلاب النشطون في المركز')
-                ->descriptionIcon('heroicon-o-academic-cap')
+            Stat::make('الطلاب النشطون', number_format($active))
+                ->description('الطلاب المستمرون في الدراسة')
+                ->descriptionIcon('heroicon-o-check-circle')
                 ->color('success'),
 
-            Stat::make('الطلاب غير النشطين', $inactive)
+            Stat::make('الطلاب غير النشطين', number_format($inactive))
                 ->description('الطلاب غير النشطين')
-                ->descriptionIcon('heroicon-m-pause-circle')
+                ->descriptionIcon('heroicon-o-user-minus')
                 ->color('danger'),
+
+            Stat::make('تسجيلات هذا الشهر', number_format($newThisMonth))
+                ->description('الطلاب المضافون خلال الشهر')
+                ->descriptionIcon('heroicon-o-user-plus')
+                ->color('info'),
         ];
     }
 }

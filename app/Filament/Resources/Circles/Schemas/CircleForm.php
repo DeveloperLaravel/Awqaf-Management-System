@@ -26,10 +26,16 @@ class CircleForm
     {
         return $schema->components([
 
+            /*
+             * بيانات الحلقة.
+             */
             Section::make('بيانات الحلقة')
                 ->description('بيانات المركز والحلقة والمعلم المسؤول.')
                 ->schema([
 
+                    /*
+                     * المركز.
+                     */
                     Select::make('center_id')
                         ->label('مركز التحفيظ')
                         ->relationship(
@@ -38,7 +44,7 @@ class CircleForm
                             modifyQueryUsing: fn (Builder $query) =>
                                 self::centersQuery($query),
                         )
-                        ->default(fn () => Auth::user()?->center_id)
+                        ->default(fn () => self::defaultCenterId())
                         ->searchable()
                         ->preload()
                         ->required()
@@ -55,54 +61,63 @@ class CircleForm
                             Rule::exists('centers', 'id'),
                         ]),
 
-                    Select::make('teacher_id')
-                        ->label('المعلم المسؤول')
-                        ->options(
-                            fn (Get $get): array =>
-                                self::teachersOptions($get('center_id'))
-                        )
-                        ->searchable()
-                        ->preload()
-                        ->required()
-                        ->disabled(fn (Get $get): bool =>
-                            blank($get('center_id'))
-                        )
-                        ->rules([
-                            'required',
-                            'integer',
-                            Rule::exists('teachers', 'id'),
-                        ]),
+                    /*
+                     * المعلم المسؤول.
+                     */
+                 Select::make('teacher_id')
+    ->label('المعلم المسؤول')
+    ->options(
+        fn (Get $get): array =>
+            self::teachersOptions($get('center_id'))
+    )
+    ->searchable()
+    ->preload()
+    ->nullable()
+    ->required(false)
+    ->placeholder('اختر المعلم أو اتركه بدون تعيين')
+    ->disabled(fn (Get $get): bool =>
+        blank($get('center_id'))
+    )
+    ->visible(fn (): bool =>
+        ! Auth::user()?->hasRole('teacher')
+    )
+    ->rules([
+        'nullable',
+        'integer',
+        Rule::exists('teachers', 'id'),
+    ]),
+                    /*
+                     * اسم الحلقة.
+                     */
+              TextInput::make('name')
+    ->label('اسم الحلقة')
+    ->required()
+    ->maxLength(255)
+    ->rules(function (Get $get, ?Circle $record) {
+        return [
+            Rule::unique('circles', 'name')
+                ->where(
+                    'center_id',
+                    $get('center_id') ?? $record?->center_id
+                )
+                ->ignore($record?->id),
+        ];
+    }),
 
-                    TextInput::make('name')
-                        ->label('اسم الحلقة')
-                        ->required()
-                        ->maxLength(255)
-                        ->rules(
-                            fn (Get $get): array => [
-                                Rule::unique('circles', 'name')
-                                    ->where(
-                                        'center_id',
-                                        $get('center_id')
-                                    )
-                                    ->ignore(self::currentRecordId()),
-                            ]
-                        ),
-
-                    TextInput::make('code')
-                        ->label('رمز الحلقة')
-                        ->required()
-                        ->maxLength(50)
-                        ->rules(
-                            fn (Get $get): array => [
-                                Rule::unique('circles', 'code')
-                                    ->where(
-                                        'center_id',
-                                        $get('center_id')
-                                    )
-                                    ->ignore(self::currentRecordId()),
-                            ]
-                        ),
-
+TextInput::make('code')
+    ->label('رمز الحلقة')
+    ->required()
+    ->maxLength(50)
+    ->rules(function (Get $get, ?Circle $record) {
+        return [
+            Rule::unique('circles', 'code')
+                ->where(
+                    'center_id',
+                    $get('center_id') ?? $record?->center_id
+                )
+                ->ignore($record?->id),
+        ];
+    }),
                     Select::make('level')
                         ->label('مستوى الحلقة')
                         ->options([
@@ -127,6 +142,9 @@ class CircleForm
                 ])
                 ->columns(2),
 
+            /*
+             * جدول الحلقة.
+             */
             Section::make('جدول الحلقة')
                 ->schema([
 
@@ -155,13 +173,18 @@ class CircleForm
                 ])
                 ->columns(2),
 
+            /*
+             * حالة الحلقة.
+             */
             Section::make('حالة الحلقة')
                 ->schema([
-
-                    Toggle::make('is_active')
-                        ->label('الحلقة نشطة')
-                        ->default(true)
-                        ->required(),
+ Toggle::make('is_active')
+            ->label('الحلقة نشطة')
+            ->default(true)
+            ->required()
+            ->visible(fn (): bool =>
+                ! Auth::user()?->hasRole('teacher')
+            ),
 
                 ]),
 
@@ -169,55 +192,120 @@ class CircleForm
     }
 
     /**
-     * السماح باختيار المركز للمدير العام ومدير المركز.
+     * الأدوار التي يسمح لها باختيار المركز.
      */
     protected static function canSelectCenter(): bool
     {
         $user = Auth::user();
 
         return $user !== null
-            && (
-                $user->hasRole('super_admin')
-                || $user->hasRole('center_manager')
-            );
+            && $user->hasAnyRole([
+                'super_admin',
+                'center_admin',
+                'center_manager',
+            ]);
     }
 
     /**
-     * المراكز التي يستطيع المستخدم الوصول إليها.
+     * المركز الافتراضي.
      */
-    protected static function centersQuery(Builder $query): Builder
+    protected static function defaultCenterId(): ?int
     {
         $user = Auth::user();
 
         if (! $user) {
-            return $query->whereRaw('1 = 0');
+            return null;
         }
 
         if ($user->hasRole('super_admin')) {
-            return $query;
+            return $user->center_id
+                ? (int) $user->center_id
+                : null;
         }
 
-        if ($user->hasRole('center_manager')) {
-            $centerIds = collect(
-                app(CenterHierarchy::class)
-                    ->accessibleIdsForUser($user)
-            )->all();
+        $centerIds = self::allowedCenterIds();
 
-            return empty($centerIds)
-                ? $query->whereRaw('1 = 0')
-                : $query->whereIn('centers.id', $centerIds);
+        $userCenterId = (int) ($user->center_id ?? 0);
+
+        if (
+            $userCenterId > 0
+            && in_array($userCenterId, $centerIds, true)
+        ) {
+            return $userCenterId;
         }
 
-        return $query->whereRaw('1 = 0');
+        return count($centerIds) === 1
+            ? $centerIds[0]
+            : null;
     }
 
     /**
-     * المعلمون النشطون المرتبطون بالمركز المختار عبر center_teacher.
+     * المراكز المسموح للمستخدم باختيارها.
+     */
+    protected static function allowedCenterIds(): array
+    {
+        $user = Auth::user();
+
+        if (! $user) {
+            return [];
+        }
+
+        if ($user->hasRole('super_admin')) {
+            return Center::query()
+                ->pluck('id')
+                ->map(fn ($id) => (int) $id)
+                ->all();
+        }
+
+        if ($user->hasAnyRole([
+            'center_admin',
+            'center_manager',
+        ])) {
+            return array_map(
+                'intval',
+                app(CenterHierarchy::class)
+                    ->accessibleIdsForUser($user)
+            );
+        }
+
+        return [];
+    }
+
+    /**
+     * فلترة المراكز في القائمة.
+     */
+    protected static function centersQuery(
+        Builder $query
+    ): Builder {
+
+        $centerIds = self::allowedCenterIds();
+
+        if (empty($centerIds)) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $query->whereIn('centers.id', $centerIds);
+    }
+
+    /**
+     * المعلمون النشطون المرتبطون بالمركز.
      */
     protected static function teachersOptions(
         mixed $centerId
     ): array {
+
         if (blank($centerId)) {
+            return [];
+        }
+
+        $centerId = (int) $centerId;
+
+        // لا نعرض معلمين لمركز خارج نطاق المستخدم.
+        if (! in_array(
+            $centerId,
+            self::allowedCenterIds(),
+            true
+        )) {
             return [];
         }
 
@@ -235,14 +323,14 @@ class CircleForm
     }
 
     /**
-     * معرف السجل الحالي عند التعديل.
+     * معرف الحلقة الحالية عند التعديل.
      */
     protected static function currentRecordId(): ?int
     {
         $record = request()->route('record');
 
         if ($record instanceof Circle) {
-            return $record->getKey();
+            return (int) $record->getKey();
         }
 
         if (is_numeric($record)) {

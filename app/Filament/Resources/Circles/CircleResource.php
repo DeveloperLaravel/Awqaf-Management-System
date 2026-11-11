@@ -67,7 +67,7 @@ class CircleResource extends Resource
     /**
      * المراكز المسموح للمستخدم بالوصول إليها.
      */
-   public static function allowedCenterIds(): array
+public static function allowedCenterIds(): array
 {
     $user = auth()->user();
 
@@ -81,101 +81,130 @@ class CircleResource extends Resource
             ->all();
     }
 
-    return collect(
-        app(CenterHierarchy::class)->accessibleIdsForUser($user)
-    )->all();
-}
+    if (
+        $user->hasAnyRole([
+            'center_admin',
+            'center_manager',
+        ])
+    ) {
+        return app(CenterHierarchy::class)
+            ->accessibleIdsForUser($user);
+    }
 
+    return [];
+}
     /**
      * عزل الحلقات حسب المستخدم.
      */
-    public static function getEloquentQuery(): Builder
-    {
-        $query = parent::getEloquentQuery();
+/**
+ * عزل الحلقات حسب دور المستخدم.
+ */
+public static function getEloquentQuery(): Builder
+{
+    $query = parent::getEloquentQuery();
 
-        $user = auth()->user();
+    $user = auth()->user();
 
-        if (! $user) {
+    if (! $user) {
+        return $query->whereRaw('1 = 0');
+    }
+
+    // 1. المدير العام: جميع الحلقات.
+    if ($user->hasRole('super_admin')) {
+        return $query;
+    }
+
+    // 2. مدير المركز ومدير الفرع.
+    if (
+        $user->hasAnyRole([
+            'center_admin',
+            'center_manager',
+        ])
+    ) {
+        $centerIds = static::allowedCenterIds();
+
+        if (empty($centerIds)) {
             return $query->whereRaw('1 = 0');
         }
 
-        // المدير العام يرى جميع الحلقات.
-        if ($user->hasRole('super_admin')) {
-            return $query;
-        }
-
-        // مدير المركز يرى حلقات مراكزه والفروع التابعة له.
-        if ($user->hasRole('center_manager')) {
-            $centerIds = static::allowedCenterIds();
-
-            if (empty($centerIds)) {
-                return $query->whereRaw('1 = 0');
-            }
-
-            return $query->whereIn('center_id', $centerIds);
-        }
-
-        // المعلم يرى الحلقات المسندة إليه فقط.
-        if ($user->hasRole('teacher')) {
-            return $query->whereHas(
-                'teacher',
-                fn (Builder $teacherQuery) => $teacherQuery
-                    ->where('user_id', $user->getKey())
-            );
-        }
-
-        // منع بقية الأدوار من رؤية الحلقات.
-        return $query->whereRaw('1 = 0');
+        return $query->whereIn('center_id', $centerIds);
     }
+
+    // 3. المعلم: الحلقات المسندة إليه فقط.
+// المعلم يرى حلقاته المسندة إليه فقط.
+if ($user->hasRole('teacher')) {
+
+    return $query->whereHas(
+        'teacher',
+        fn (Builder $teacherQuery) => $teacherQuery
+            ->where('user_id', $user->getKey())
+            ->where('teachers.is_active', true)
+            ->whereHas(
+                'centers',
+                fn (Builder $centerQuery) => $centerQuery
+                    ->whereColumn(
+                        'centers.id',
+                        'circles.center_id'
+                    )
+                    ->where('center_teacher.is_active', true)
+            )
+    );
+}
+// 4. الطالب: الحلقات المسجل فيها حالياً فقط.
+if ($user->hasRole('student')) {
+
+    return $query->whereHas(
+        'students',
+        fn (Builder $studentQuery) => $studentQuery
+            ->where('students.user_id', $user->getKey())
+            ->where('students.is_active', true)
+            ->whereNull('circle_student.left_at')
+            ->whereColumn(
+                'circle_student.center_id',
+                'circles.center_id'
+            )
+    );
+}
+
+
+    // 4. الطالب وبقية الأدوار:
+    // لا يسمح لهم بدخول إدارة الحلقات في Filament.
+    return $query->whereRaw('1 = 0');
+}
 
     /**
      * صلاحية عرض القائمة.
      */
-    public static function canViewAny(): bool
-    {
-        return Gate::allows('viewAny', Circle::class);
-    }
+  public static function canViewAny(): bool
+{
+    return Gate::allows('viewAny', Circle::class);
+}
 
-    /**
-     * صلاحية عرض سجل.
-     */
-    public static function canView(Model $record): bool
-    {
-        return $record instanceof Circle
-            && Gate::allows('view', $record);
-    }
+public static function canView(Model $record): bool
+{
+    return $record instanceof Circle
+        && Gate::allows('view', $record);
+}
 
-    /**
-     * صلاحية إنشاء حلقة.
-     */
-    public static function canCreate(): bool
-    {
-        return Gate::allows('create', Circle::class);
-    }
+public static function canCreate(): bool
+{
+    return Gate::allows('create', Circle::class);
+}
 
-    /**
-     * صلاحية تعديل حلقة.
-     */
-    public static function canEdit(Model $record): bool
-    {
-        return $record instanceof Circle
-            && Gate::allows('update', $record);
-    }
+public static function canEdit(Model $record): bool
+{
+    return $record instanceof Circle
+        && Gate::allows('update', $record);
+}
 
-    /**
-     * صلاحية حذف حلقة.
-     */
-    public static function canDelete(Model $record): bool
-    {
-        return $record instanceof Circle
-            && Gate::allows('delete', $record);
-    }
+public static function canDelete(Model $record): bool
+{
+    return $record instanceof Circle
+        && Gate::allows('delete', $record);
+}
 
-    /**
-     * صلاحية الحذف الجماعي.
-     */
-    public static function canDeleteAny(): bool
-    {
-        return Gate::allows('deleteAny', Circle::class);
-    }
+public static function canDeleteAny(): bool
+{
+    return Gate::allows('deleteAny', Circle::class);
+}
 }

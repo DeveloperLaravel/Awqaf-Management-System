@@ -5,7 +5,6 @@ namespace App\Filament\Resources\Students;
 use App\Filament\Resources\Students\Pages;
 use App\Models\Center;
 use App\Models\Student;
-use App\Services\CenterHierarchy;
 use Filament\Forms\Components\DatePicker;
 use Filament\Forms\Components\Select;
 use Filament\Forms\Components\Textarea;
@@ -18,6 +17,8 @@ use Filament\Tables\Columns\TextColumn;
 use Filament\Tables\Columns\IconColumn;
 use Filament\Tables\Filters\SelectFilter;
 use Illuminate\Database\Eloquent\Builder;
+use App\Support\StudentCenterAccess;
+use App\Services\CenterHierarchy;
 
 class StudentResource extends Resource
 {
@@ -35,67 +36,96 @@ class StudentResource extends Resource
 
     protected static ?int $navigationSort = 1;
 
-    public static function form(Schema $schema): Schema
-    {
-        return $schema->components([
-            \Filament\Schemas\Components\Section::make('البيانات الأساسية')
-                ->schema([
-                    Select::make('center_id')
-                        ->label('المركز')
-                        ->options(fn () => self::availableCenters())
-                        ->searchable()
-                        ->preload()
-                        ->required(),
 
-                    TextInput::make('student_code')
-                        ->label('رقم الطالب')
-                        ->required()
-                        ->maxLength(50),
+public static function form(Schema $schema): Schema
+{
+    return $schema->components([
+        \Filament\Schemas\Components\Section::make('البيانات الأساسية')
+            ->schema([
+                Select::make('center_id')
+                    ->label('المركز')
+                    ->options(fn () => self::availableCenters())
+                    ->searchable()
+                    ->preload()
+                    ->required(),
 
-                    TextInput::make('full_name')
-                        ->label('اسم الطالب')
-                        ->required()
-                        ->maxLength(255),
+                TextInput::make('student_code')
+                    ->label('رقم الطالب')
+                    ->required()
+                    ->maxLength(50),
 
-                    Select::make('gender')
-                        ->label('الجنس')
-                        ->options([
-                            'male' => 'ذكر',
-                            'female' => 'أنثى',
-                        ]),
+                TextInput::make('full_name')
+                    ->label('اسم الطالب')
+                    ->required()
+                    ->maxLength(255),
 
-                    DatePicker::make('birth_date')
-                        ->label('تاريخ الميلاد')
-                        ->native(false),
+                Select::make('gender')
+                    ->label('الجنس')
+                    ->options([
+                        'male' => 'ذكر',
+                        'female' => 'أنثى',
+                    ]),
 
-                    DatePicker::make('enrollment_date')
-                        ->label('تاريخ الالتحاق')
-                        ->native(false),
+                DatePicker::make('birth_date')
+                    ->label('تاريخ الميلاد')
+                    ->native(false),
 
-                    TextInput::make('school_grade')
-                        ->label('المرحلة الدراسية')
-                        ->maxLength(100),
+                DatePicker::make('enrollment_date')
+                    ->label('تاريخ الالتحاق')
+                    ->native(false),
 
-                    TextInput::make('phone')
-                        ->label('رقم الهاتف')
-                        ->tel()
-                        ->maxLength(30),
+                TextInput::make('school_grade')
+                    ->label('المرحلة الدراسية')
+                    ->maxLength(100),
 
-                    Textarea::make('address')
-                        ->label('العنوان')
-                        ->columnSpanFull(),
+                TextInput::make('phone')
+                    ->label('رقم الهاتف')
+                    ->tel()
+                    ->maxLength(30),
 
-                    Textarea::make('notes')
-                        ->label('ملاحظات')
-                        ->columnSpanFull(),
+                Textarea::make('address')
+                    ->label('العنوان')
+                    ->columnSpanFull(),
 
-                    Toggle::make('is_active')
-                        ->label('الطالب نشط')
-                        ->default(true),
-                ])
-                ->columns(2),
-        ]);
-    }
+                Textarea::make('notes')
+                    ->label('ملاحظات')
+                    ->columnSpanFull(),
+
+                Toggle::make('is_active')
+                    ->label('الطالب نشط')
+                    ->default(true),
+            ])
+            ->columns(2),
+
+        \Filament\Schemas\Components\Section::make('حساب دخول الطالب')
+            ->description('سيتم إنشاء حساب للطالب تلقائيًا عند حفظ بياناته.')
+            ->schema([
+                TextInput::make('account_email')
+                    ->label('البريد الإلكتروني')
+                    ->email()
+                    ->required()
+                    ->unique(table: 'users', column: 'email', ignorable: fn (?Student $record) => $record?->user,)
+                    ->maxLength(255),
+
+                TextInput::make('account_password')
+                    ->label('كلمة المرور')
+                    ->password()
+                    ->revealable()
+                    ->required()
+                    ->minLength(8)
+                    ->confirmed(),
+
+                TextInput::make('account_password_confirmation')
+                    ->label('تأكيد كلمة المرور')
+                    ->password()
+                    ->revealable()
+                    ->required()
+                    ->dehydrated(false),
+            ])
+            ->columns(2),
+    ]);
+}
+
 
     public static function table(Table $table): Table
     {
@@ -175,13 +205,12 @@ class StudentResource extends Resource
         if (! $user) {
             return [];
         }
+           if ($user->hasRole('super_admin')) {
+        return Center::query()->pluck('id')->all();
+    }
 
-        if ($user->hasRole('super_admin')) {
-            return Center::query()->pluck('id')->all();
-        }
-
-        return app(CenterHierarchy::class)
-            ->accessibleIdsForUser($user);
+         return app(CenterHierarchy::class)
+        ->accessibleIdsForUser($user);
     }
 
     protected static function availableCenters(): array

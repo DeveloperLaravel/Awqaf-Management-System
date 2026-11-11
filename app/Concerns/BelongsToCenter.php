@@ -1,7 +1,6 @@
 <?php
 
-namespace App\Filament\Resources\Concerns;
-
+namespace App\Concerns;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;

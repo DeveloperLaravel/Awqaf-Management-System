@@ -11,6 +11,8 @@ use Spatie\Permission\Traits\HasRoles;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Laravel\Sanctum\HasApiTokens;
+use Illuminate\Database\Eloquent\Relations\HasOne;
+
 
 class User extends Authenticatable implements FilamentUser
 {
@@ -68,6 +70,17 @@ class User extends Authenticatable implements FilamentUser
             'center_admin',
             'center_manager',
             'teacher',
+            'student',
         ]);
     }
+
+    public function student(): HasOne
+{
+    return $this->hasOne(Student::class);
+}
+
+public function teacher(): HasOne
+{
+    return $this->hasOne(Teacher::class);
+}
 }
